@@ -40,7 +40,7 @@ signal_processor.write_input = _patched_write
 # Fake stream:
 #   - 10 constant-speed packets (speed ~120, no touch) to fill the sample buffer
 #   - 1 touch=1 packet (immediate trigger regardless of buffer)
-#   - 10 high-speed packets (speed ~800, increasing) to trigger a speed pattern change
+#   - 10 gradually increasing speed packets (ramp so each stays within 5x outlier filter)
 FAKE_STREAM = """\
 {"touch": 0, "speed": 118.00, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"}
 {"touch": 0, "speed": 119.50, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"}
@@ -53,16 +53,16 @@ FAKE_STREAM = """\
 {"touch": 0, "speed": 120.00, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"}
 {"touch": 0, "speed": 119.70, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"}
 {"touch": 1, "speed": 118.95, "temps": [{"addr": "0x48", "tempC": 22.875}], "device": "giver"}
-{"touch": 0, "speed": 500.00, "temps": [{"addr": "0x48", "tempC": 23.0}], "device": "giver"}
-{"touch": 0, "speed": 580.00, "temps": [{"addr": "0x48", "tempC": 23.2}], "device": "giver"}
-{"touch": 0, "speed": 650.00, "temps": [{"addr": "0x48", "tempC": 23.5}], "device": "giver"}
-{"touch": 0, "speed": 700.00, "temps": [{"addr": "0x48", "tempC": 23.8}], "device": "giver"}
-{"touch": 0, "speed": 730.00, "temps": [{"addr": "0x48", "tempC": 24.0}], "device": "giver"}
-{"touch": 0, "speed": 760.00, "temps": [{"addr": "0x48", "tempC": 24.1}], "device": "giver"}
-{"touch": 0, "speed": 780.00, "temps": [{"addr": "0x48", "tempC": 24.2}], "device": "giver"}
-{"touch": 0, "speed": 800.00, "temps": [{"addr": "0x48", "tempC": 24.3}], "device": "giver"}
-{"touch": 0, "speed": 810.00, "temps": [{"addr": "0x48", "tempC": 24.4}], "device": "giver"}
-{"touch": 0, "speed": 820.00, "temps": [{"addr": "0x48", "tempC": 24.5}], "device": "giver"}
+{"touch": 0, "speed": 200.00, "temps": [{"addr": "0x48", "tempC": 23.0}], "device": "giver"}
+{"touch": 0, "speed": 300.00, "temps": [{"addr": "0x48", "tempC": 23.2}], "device": "giver"}
+{"touch": 0, "speed": 400.00, "temps": [{"addr": "0x48", "tempC": 23.5}], "device": "giver"}
+{"touch": 0, "speed": 450.00, "temps": [{"addr": "0x48", "tempC": 23.8}], "device": "giver"}
+{"touch": 0, "speed": 500.00, "temps": [{"addr": "0x48", "tempC": 24.0}], "device": "giver"}
+{"touch": 0, "speed": 550.00, "temps": [{"addr": "0x48", "tempC": 24.1}], "device": "giver"}
+{"touch": 0, "speed": 600.00, "temps": [{"addr": "0x48", "tempC": 24.2}], "device": "giver"}
+{"touch": 0, "speed": 650.00, "temps": [{"addr": "0x48", "tempC": 24.3}], "device": "giver"}
+{"touch": 0, "speed": 700.00, "temps": [{"addr": "0x48", "tempC": 24.4}], "device": "giver"}
+{"touch": 0, "speed": 750.00, "temps": [{"addr": "0x48", "tempC": 24.5}], "device": "giver"}
 """
 
 # Simulate voice_data.json being present for one window of readings
