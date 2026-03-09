@@ -33,10 +33,21 @@ SPEED_SAMPLE_SIZE = 10   # samples to collect before characterizing speed
 TEMP_SAMPLE_SIZE  = 25   # larger window for temperature (gradual changes)
 WINDOW_SIZE = 5          # legacy smoothing window (kept for process_stream compat)
 SPEED_MIN_MAGNITUDE = 300  # below this mean speed, movement is resting — no speed trigger
+SPEED_COOLDOWN = 10      # after a speed-triggered write, ignore speed for this many packets
+TEMP_COOLDOWN = 25       # same for temperature (matches its larger sample window)
 
 # Rolling sample buffers for softmax characterization
 speed_samples: deque = deque(maxlen=SPEED_SAMPLE_SIZE)
 temp_samples: deque = deque(maxlen=TEMP_SAMPLE_SIZE)
+
+# Consecutive outlier rejections — if too many in a row, the signal has genuinely
+# shifted and the buffer should be cleared so the new regime can fill in.
+OUTLIER_CONSEC_LIMIT = 3
+_speed_consec_outliers: int = 0
+
+# Cooldown counters — packets remaining before speed/temp can trigger again
+_speed_cooldown: int = 0
+_temp_cooldown: int = 0
 
 # Last written characterization — used to detect meaningful change
 _last_speed_char: Optional[dict] = None
@@ -46,6 +57,20 @@ BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(BASE_DIR, "data")
 input_path = os.path.join(DATA_DIR, "input_data.json")
 voice_path = os.path.join(DATA_DIR, "voice_data.json")
+
+
+def reset(clear_history=False):
+    """Clear sample buffers. Optionally clear cached characterizations too."""
+    global _last_speed_char, _last_temp_char, _speed_consec_outliers
+    global _speed_cooldown, _temp_cooldown
+    speed_samples.clear()
+    temp_samples.clear()
+    _speed_consec_outliers = 0
+    _speed_cooldown = 0
+    _temp_cooldown = 0
+    if clear_history:
+        _last_speed_char = None
+        _last_temp_char = None
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +191,8 @@ def process_packet(raw: dict) -> None:
       - speed buffer has >= SPEED_SAMPLE_SIZE samples AND characterization changed
       - temp buffer has >= TEMP_SAMPLE_SIZE samples AND characterization changed
     """
-    global _last_speed_char, _last_temp_char
+    global _last_speed_char, _last_temp_char, _speed_consec_outliers
+    global _speed_cooldown, _temp_cooldown
 
     if raw.get("type") == "hello" or "speed" not in raw:
         return
@@ -189,13 +215,24 @@ def process_packet(raw: dict) -> None:
     raw_speed = raw.get("speed", 0.0)
     raw_temp = extract_temp(raw.get("temps", []))
 
-    # Accumulate samples — reject outliers (> 5x current buffer median)
+    # Accumulate samples — reject outliers (> 5x current buffer median).
+    # If many consecutive values are rejected, the signal has genuinely shifted
+    # to a new regime: clear the buffer and accept the new value.
     if speed_samples:
         sorted_s = sorted(speed_samples)
         median_s = sorted_s[len(sorted_s) // 2]
         if median_s > 0 and raw_speed > median_s * 5:
-            print(f"[signal_processor] outlier rejected: speed={raw_speed:.1f} (median={median_s:.1f})")
-            raw_speed = None
+            _speed_consec_outliers += 1
+            if _speed_consec_outliers >= OUTLIER_CONSEC_LIMIT:
+                print(f"[signal_processor] regime shift detected: {_speed_consec_outliers} consecutive "
+                      f"rejections, clearing speed buffer (median was {median_s:.1f})")
+                speed_samples.clear()
+                _speed_consec_outliers = 0
+            else:
+                print(f"[signal_processor] outlier rejected: speed={raw_speed:.1f} (median={median_s:.1f})")
+                raw_speed = None
+        else:
+            _speed_consec_outliers = 0
     if raw_speed is not None:
         speed_samples.append(raw_speed)
     if raw_temp is not None:
@@ -204,20 +241,32 @@ def process_packet(raw: dict) -> None:
     speed_char = analyze_signal(speed_samples) if speed_samples else None
     temp_char = analyze_signal(temp_samples) if temp_samples else None
 
+    # Tick down cooldowns
+    if _speed_cooldown > 0:
+        _speed_cooldown -= 1
+    if _temp_cooldown > 0:
+        _temp_cooldown -= 1
+
     speed_ready = len(speed_samples) >= SPEED_SAMPLE_SIZE
     temp_ready = len(temp_samples) >= TEMP_SAMPLE_SIZE
     speed_above_min = speed_char is not None and speed_char["magnitude"] >= SPEED_MIN_MAGNITUDE
-    speed_trigger = speed_ready and speed_above_min and signal_changed(_last_speed_char, speed_char)
-    temp_trigger = temp_ready and signal_changed(_last_temp_char, temp_char)
+    speed_trigger = (speed_ready and speed_above_min
+                     and _speed_cooldown == 0
+                     and signal_changed(_last_speed_char, speed_char))
+    temp_trigger = (temp_ready
+                    and _temp_cooldown == 0
+                    and signal_changed(_last_temp_char, temp_char))
 
     if not has_voice and not speed_trigger and not temp_trigger:
         return
 
-    # Commit characterization only when writing
+    # Commit characterization and start cooldown only when writing
     if speed_trigger:
         _last_speed_char = speed_char
+        _speed_cooldown = SPEED_COOLDOWN
     if temp_trigger:
         _last_temp_char = temp_char
+        _temp_cooldown = TEMP_COOLDOWN
 
     output = {
         "voice": voice if voice else {"transcript": "", "sentiment": ""},
