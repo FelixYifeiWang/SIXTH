@@ -184,10 +184,7 @@ async def voice_stream(websocket: WebSocket):
                         try:
                             result = await hume_socket.send_file(
                                 file_=tmp_path,
-                                config=Config(
-                                    prosody={"identify_speakers": True},
-                                    burst={},
-                                ),
+                                config=Config(prosody={}, burst={}),
                             )
 
                             # Check for error response
