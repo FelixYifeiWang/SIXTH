@@ -73,11 +73,11 @@ function getEmotionColor(name) {
   return EMOTION_COLORS[(name || '').toLowerCase()] || DEFAULT_COLOR;
 }
 
-/* ---- Rolling Window Smoothing ---- */
-// Keep last N readings and weight recent ones higher
-const WINDOW_SIZE = 4;
-const WINDOW_WEIGHTS = [0.1, 0.15, 0.25, 0.5]; // oldest → newest
-const recentReadings = []; // [topEmotions array, ...]
+/* ---- Smoothing ---- */
+// Short window, heavily weighted to latest reading
+const WINDOW_SIZE = 3;
+const WINDOW_WEIGHTS = [0.1, 0.2, 0.7]; // oldest → newest — very reactive
+const recentReadings = [];
 
 function smoothEmotions(rawEmotions) {
   recentReadings.push(rawEmotions);
@@ -85,7 +85,6 @@ function smoothEmotions(rawEmotions) {
 
   const fused = {};
   for (let i = 0; i < recentReadings.length; i++) {
-    // Align weight index to the end (newest gets highest weight)
     const wi = WINDOW_WEIGHTS.length - recentReadings.length + i;
     const weight = WINDOW_WEIGHTS[wi];
     for (const e of recentReadings[i]) {
@@ -455,44 +454,30 @@ async function startStreaming() {
 }
 
 function startChunkedRecording() {
-  function recordChunk() {
-    if (!isStreaming || !audioStream) return;
+  if (!isStreaming || !audioStream) return;
 
-    mediaRecorder = new MediaRecorder(audioStream, {
-      mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus' : 'audio/webm'
-    });
+  mediaRecorder = new MediaRecorder(audioStream, {
+    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : 'audio/webm'
+  });
 
-    const chunks = [];
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
-    };
+  // ondataavailable fires every CHUNK_DURATION ms via timeslice
+  // This works in the background — not affected by setTimeout throttling
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size === 0 || !voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
 
-    mediaRecorder.onstop = async () => {
-      if (chunks.length === 0 || !voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
-
-      const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1];
-        if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
-          voiceWs.send(JSON.stringify({ type: 'audio', data: base64 }));
-        }
-      };
-      reader.readAsDataURL(blob);
-
-      if (isStreaming) recordChunk();
-    };
-
-    mediaRecorder.start();
-    setTimeout(() => {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result.split(',')[1];
+      if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+        voiceWs.send(JSON.stringify({ type: 'audio', data: base64 }));
       }
-    }, CHUNK_DURATION);
-  }
+    };
+    reader.readAsDataURL(e.data);
+  };
 
-  recordChunk();
+  // timeslice parameter makes it emit chunks continuously
+  mediaRecorder.start(CHUNK_DURATION);
 }
 
 /* ---- Hug Trigger Visual ---- */
