@@ -106,26 +106,36 @@ function drawTimeline() {
   if (timeline.length < 2) return;
 
   const step = w / (TIMELINE_MAX - 1);
-  const offset = TIMELINE_MAX - timeline.length;
+  const off = TIMELINE_MAX - timeline.length;
+
+  // Auto-scale: find min/max scores in visible window and add padding
+  const scores = timeline.map(t => t.score);
+  const minScore = Math.max(0, Math.min(...scores) - 0.02);
+  const maxScore = Math.min(1, Math.max(...scores) + 0.02);
+  const range = Math.max(maxScore - minScore, 0.05); // at least 5% range
+
+  function yPos(score) {
+    const normalized = (score - minScore) / range;
+    return h - (normalized * h * 0.8) - h * 0.1;
+  }
 
   // Draw filled area
   ctx.beginPath();
-  ctx.moveTo(offset * step, h);
+  ctx.moveTo(off * step, h);
   for (let i = 0; i < timeline.length; i++) {
-    const x = (offset + i) * step;
-    const y = h - (timeline[i].score * h * 0.85) - h * 0.05;
+    const x = (off + i) * step;
+    const y = yPos(timeline[i].score);
     if (i === 0) ctx.lineTo(x, y);
     else {
-      const px = (offset + i - 1) * step;
-      const py = h - (timeline[i - 1].score * h * 0.85) - h * 0.05;
+      const px = (off + i - 1) * step;
+      const py = yPos(timeline[i - 1].score);
       const cx = (px + x) / 2;
       ctx.bezierCurveTo(cx, py, cx, y, x, y);
     }
   }
-  ctx.lineTo((offset + timeline.length - 1) * step, h);
+  ctx.lineTo((off + timeline.length - 1) * step, h);
   ctx.closePath();
 
-  // Gradient fill using latest emotion color
   const latest = timeline[timeline.length - 1];
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, latest.color + '30');
@@ -136,12 +146,12 @@ function drawTimeline() {
   // Draw line
   ctx.beginPath();
   for (let i = 0; i < timeline.length; i++) {
-    const x = (offset + i) * step;
-    const y = h - (timeline[i].score * h * 0.85) - h * 0.05;
+    const x = (off + i) * step;
+    const y = yPos(timeline[i].score);
     if (i === 0) ctx.moveTo(x, y);
     else {
-      const px = (offset + i - 1) * step;
-      const py = h - (timeline[i - 1].score * h * 0.85) - h * 0.05;
+      const px = (off + i - 1) * step;
+      const py = yPos(timeline[i - 1].score);
       const cx = (px + x) / 2;
       ctx.bezierCurveTo(cx, py, cx, y, x, y);
     }
@@ -150,10 +160,10 @@ function drawTimeline() {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Draw dots with emotion colors
+  // Draw dots
   for (let i = 0; i < timeline.length; i++) {
-    const x = (offset + i) * step;
-    const y = h - (timeline[i].score * h * 0.85) - h * 0.05;
+    const x = (off + i) * step;
+    const y = yPos(timeline[i].score);
     ctx.beginPath();
     ctx.arc(x, y, i === timeline.length - 1 ? 4 : 2, 0, Math.PI * 2);
     ctx.fillStyle = timeline[i].color;
@@ -161,15 +171,13 @@ function drawTimeline() {
   }
 
   // Latest dot glow
-  if (timeline.length > 0) {
-    const last = timeline.length - 1;
-    const x = (offset + last) * step;
-    const y = h - (timeline[last].score * h * 0.85) - h * 0.05;
-    ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = timeline[last].color + '40';
-    ctx.fill();
-  }
+  const last = timeline.length - 1;
+  const lx = (off + last) * step;
+  const ly = yPos(timeline[last].score);
+  ctx.beginPath();
+  ctx.arc(lx, ly, 6, 0, Math.PI * 2);
+  ctx.fillStyle = timeline[last].color + '40';
+  ctx.fill();
 }
 
 window.addEventListener('resize', drawTimeline);
