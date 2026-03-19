@@ -1,7 +1,6 @@
 /* ---- Configuration ---- */
 const CONFIG = (() => {
   const apiUrl = (window.CONNECTQ_API_URL || '').replace(/\/+$/, '');
-  const wsProto = apiUrl.startsWith('https') ? 'wss' : 'ws';
   const wsUrl = apiUrl ? apiUrl.replace(/^http/, 'ws') : `ws://${location.host}`;
   return { API_URL: apiUrl, WS_URL: wsUrl };
 })();
@@ -11,22 +10,112 @@ function setConnected(connected) {
   document.getElementById('conn-server').classList.toggle('connected', connected);
 }
 
-/* ---- Emotion Color ---- */
-function emotionColor(name) {
-  const n = (name || '').toLowerCase();
-  if (['joy', 'amusement', 'excitement', 'interest', 'pride', 'triumph'].includes(n))
-    return { bg: 'rgba(212,168,84,0.2)', color: '#d4a854' };
-  if (['love', 'admiration', 'adoration', 'desire', 'romance'].includes(n))
-    return { bg: 'rgba(212,168,84,0.2)', color: '#d4a854' };
-  if (['sadness', 'disappointment', 'distress', 'nostalgia', 'empathic pain'].includes(n))
-    return { bg: 'rgba(90,122,154,0.2)', color: '#5a7a9a' };
-  if (['anger', 'contempt', 'disgust', 'annoyance'].includes(n))
-    return { bg: 'rgba(224,85,85,0.2)', color: '#e05555' };
-  if (['anxiety', 'fear', 'horror', 'awkwardness', 'confusion'].includes(n))
-    return { bg: 'rgba(192,120,48,0.2)', color: '#c07830' };
-  if (['calmness', 'contentment', 'relief', 'satisfaction', 'serenity'].includes(n))
-    return { bg: 'rgba(90,154,106,0.2)', color: '#5a9a6a' };
-  return { bg: 'rgba(120,120,120,0.15)', color: '#888' };
+/* ---- Emotion Colors ---- */
+const EMOTION_COLORS = {
+  joy:            { solid: '#d4a854', glow: 'rgba(212,168,84,0.4)',  gradient: ['#d4a854', '#8a6a30'] },
+  amusement:      { solid: '#d4a854', glow: 'rgba(212,168,84,0.4)',  gradient: ['#d4a854', '#8a6a30'] },
+  excitement:     { solid: '#e8a040', glow: 'rgba(232,160,64,0.4)',  gradient: ['#e8a040', '#9a6820'] },
+  interest:       { solid: '#c0a060', glow: 'rgba(192,160,96,0.4)',  gradient: ['#c0a060', '#7a6430'] },
+  pride:          { solid: '#d4a854', glow: 'rgba(212,168,84,0.4)',  gradient: ['#d4a854', '#8a6a30'] },
+  triumph:        { solid: '#e8a040', glow: 'rgba(232,160,64,0.4)',  gradient: ['#e8a040', '#9a6820'] },
+  love:           { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
+  admiration:     { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
+  adoration:      { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
+  desire:         { solid: '#c05a70', glow: 'rgba(192,90,112,0.4)',  gradient: ['#c05a70', '#7a2a3a'] },
+  romance:        { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
+  sadness:        { solid: '#5a7a9a', glow: 'rgba(90,122,154,0.4)',  gradient: ['#5a7a9a', '#3a4a5a'] },
+  disappointment: { solid: '#5a7a9a', glow: 'rgba(90,122,154,0.4)',  gradient: ['#5a7a9a', '#3a4a5a'] },
+  distress:       { solid: '#6a7a8a', glow: 'rgba(106,122,138,0.4)', gradient: ['#6a7a8a', '#3a4a5a'] },
+  nostalgia:      { solid: '#7a8a9a', glow: 'rgba(122,138,154,0.4)', gradient: ['#7a8a9a', '#4a5a6a'] },
+  anger:          { solid: '#e05555', glow: 'rgba(224,85,85,0.4)',   gradient: ['#e05555', '#7a2a2a'] },
+  contempt:       { solid: '#c04545', glow: 'rgba(192,69,69,0.4)',   gradient: ['#c04545', '#6a2020'] },
+  disgust:        { solid: '#9a7a40', glow: 'rgba(154,122,64,0.4)',  gradient: ['#9a7a40', '#5a4a20'] },
+  annoyance:      { solid: '#c06040', glow: 'rgba(192,96,64,0.4)',   gradient: ['#c06040', '#7a3a20'] },
+  anxiety:        { solid: '#c07830', glow: 'rgba(192,120,48,0.4)',  gradient: ['#c07830', '#7a4a1a'] },
+  fear:           { solid: '#9a6a9a', glow: 'rgba(154,106,154,0.4)', gradient: ['#9a6a9a', '#5a3a5a'] },
+  horror:         { solid: '#8a4a6a', glow: 'rgba(138,74,106,0.4)',  gradient: ['#8a4a6a', '#4a2a3a'] },
+  awkwardness:    { solid: '#9a8a70', glow: 'rgba(154,138,112,0.4)', gradient: ['#9a8a70', '#5a4a30'] },
+  confusion:      { solid: '#8a8a6a', glow: 'rgba(138,138,106,0.4)', gradient: ['#8a8a6a', '#4a4a2a'] },
+  calmness:       { solid: '#5a9a6a', glow: 'rgba(90,154,106,0.4)', gradient: ['#5a9a6a', '#2a5a3a'] },
+  contentment:    { solid: '#5a9a6a', glow: 'rgba(90,154,106,0.4)', gradient: ['#5a9a6a', '#2a5a3a'] },
+  relief:         { solid: '#6aaa7a', glow: 'rgba(106,170,122,0.4)',gradient: ['#6aaa7a', '#3a6a4a'] },
+  satisfaction:   { solid: '#7aaa6a', glow: 'rgba(122,170,106,0.4)',gradient: ['#7aaa6a', '#4a6a3a'] },
+  serenity:       { solid: '#5a9a8a', glow: 'rgba(90,154,138,0.4)', gradient: ['#5a9a8a', '#2a5a4a'] },
+};
+
+const DEFAULT_COLOR = { solid: '#444', glow: 'rgba(68,68,68,0.3)', gradient: ['#3a3535', '#1a1515'] };
+
+function getEmotionColor(name) {
+  return EMOTION_COLORS[(name || '').toLowerCase()] || DEFAULT_COLOR;
+}
+
+/* ---- Orb + UI Update ---- */
+let prevEmotion = '';
+
+function updateEmotion(emotion, topEmotions) {
+  const ec = getEmotionColor(emotion);
+  const root = document.documentElement;
+
+  // Update CSS variables
+  root.style.setProperty('--emotion-color', ec.solid);
+  root.style.setProperty('--emotion-glow', ec.glow);
+
+  // Update orb
+  const orb = document.getElementById('orb');
+  orb.style.background = `radial-gradient(circle at 38% 38%, ${ec.gradient[0]}, ${ec.gradient[1]})`;
+  orb.style.boxShadow = `0 0 50px ${ec.glow}`;
+
+  // Update glow
+  document.getElementById('orb-glow').style.background = ec.solid;
+
+  // Emotion label with crossfade
+  const labelEl = document.getElementById('emotion-label');
+  if (emotion !== prevEmotion) {
+    labelEl.classList.add('changing');
+    setTimeout(() => {
+      labelEl.textContent = emotion;
+      labelEl.style.color = ec.solid;
+      setTimeout(() => labelEl.classList.remove('changing'), 250);
+    }, 200);
+    prevEmotion = emotion;
+  }
+
+  // Subtitle
+  const subEl = document.getElementById('emotion-sub');
+  if (topEmotions && topEmotions.length > 0) {
+    const pct = Math.round(topEmotions[0].score * 100);
+    subEl.textContent = `${pct}% confidence`;
+    subEl.style.color = ec.solid;
+  }
+
+  // Bars
+  const barsContainer = document.getElementById('emotion-bars');
+  barsContainer.classList.add('visible');
+
+  if (topEmotions) {
+    for (let i = 0; i < 3; i++) {
+      const e = topEmotions[i];
+      if (e) {
+        const pct = Math.round(e.score * 100);
+        const barEc = getEmotionColor(e.name);
+        document.getElementById(`bar-name-${i}`).textContent = e.name;
+        document.getElementById(`bar-fill-${i}`).style.width = pct + '%';
+        document.getElementById(`bar-fill-${i}`).style.background = barEc.solid;
+        document.getElementById(`bar-pct-${i}`).textContent = pct + '%';
+      } else {
+        document.getElementById(`bar-name-${i}`).textContent = '--';
+        document.getElementById(`bar-fill-${i}`).style.width = '0%';
+        document.getElementById(`bar-pct-${i}`).textContent = '0%';
+      }
+    }
+  }
+}
+
+function showStatus(text) {
+  document.getElementById('emotion-label').textContent = text;
+  document.getElementById('emotion-label').style.color = '';
+  document.getElementById('emotion-sub').textContent = '';
+  document.getElementById('emotion-sub').style.color = '';
 }
 
 /* ---- Real-Time Voice Streaming ---- */
@@ -34,9 +123,8 @@ let audioStream = null;
 let mediaRecorder = null;
 let voiceWs = null;
 let isStreaming = false;
-let chunkInterval = null;
 
-const CHUNK_DURATION = 2000; // 2 seconds per chunk for near real-time
+const CHUNK_DURATION = 2000;
 
 async function toggle() {
   if (isStreaming) {
@@ -50,27 +138,26 @@ async function startStreaming() {
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
-    showEmotion('Microphone access denied', '', null);
+    showStatus('Mic access denied');
     return;
   }
 
-  // Connect WebSocket to server
   voiceWs = new WebSocket(CONFIG.WS_URL + '/ws/voice');
 
   voiceWs.onopen = () => {
     setConnected(true);
     isStreaming = true;
     setRecording(true);
-    showEmotion('Listening...', '', null);
+    showStatus('Listening...');
     startChunkedRecording();
   };
 
   voiceWs.onmessage = (event) => {
     const data = JSON.parse(event.data);
     if (data.type === 'emotion') {
-      showEmotion('', data.emotion, data.top_emotions);
+      updateEmotion(data.emotion, data.top_emotions);
     } else if (data.type === 'error') {
-      showEmotion(data.message || 'Error', '', null);
+      showStatus(data.message || 'Error');
     }
   };
 
@@ -79,14 +166,13 @@ async function startStreaming() {
   };
 
   voiceWs.onerror = () => {
-    showEmotion('Connection failed', '', null);
+    showStatus('Connection failed');
     setConnected(false);
     stopStreaming();
   };
 }
 
 function startChunkedRecording() {
-  // Record in CHUNK_DURATION segments, send each as a complete audio blob
   function recordChunk() {
     if (!isStreaming || !audioStream) return;
 
@@ -106,14 +192,13 @@ function startChunkedRecording() {
       const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1]; // strip data:audio/webm;base64,
+        const base64 = reader.result.split(',')[1];
         if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
           voiceWs.send(JSON.stringify({ type: 'audio', data: base64 }));
         }
       };
       reader.readAsDataURL(blob);
 
-      // Start next chunk immediately
       if (isStreaming) recordChunk();
     };
 
@@ -146,50 +231,14 @@ function stopStreaming() {
     voiceWs.close();
   }
   voiceWs = null;
+
+  showStatus('Ready');
+  document.getElementById('emotion-sub').textContent = 'Tap start to begin';
 }
 
 function setRecording(on) {
-  document.getElementById('voice-btn').textContent = on ? 'Stop' : 'Start';
-  document.getElementById('voice-btn').classList.toggle('recording', on);
-  document.getElementById('ring').classList.toggle('recording', on);
-}
-
-function showEmotion(statusText, emotion, topEmotions) {
-  const transcriptEl = document.getElementById('voice-transcript');
-  const pillEl = document.getElementById('sentiment-pill');
-  const detailEl = document.getElementById('emotion-detail');
-
-  if (statusText) {
-    transcriptEl.textContent = statusText;
-    transcriptEl.classList.remove('typing');
-    void transcriptEl.offsetWidth;
-    transcriptEl.classList.add('typing');
-  }
-
-  if (emotion) {
-    transcriptEl.textContent = '';
-    const ec = emotionColor(emotion);
-    pillEl.textContent = emotion;
-    pillEl.style.background = ec.bg;
-    pillEl.style.color = ec.color;
-    pillEl.style.display = 'inline-block';
-    pillEl.classList.remove('pop');
-    void pillEl.offsetWidth;
-    pillEl.classList.add('pop');
-  } else if (!statusText) {
-    pillEl.style.display = 'none';
-  }
-
-  if (detailEl && topEmotions && topEmotions.length > 0) {
-    detailEl.innerHTML = topEmotions.map(e => {
-      const pct = Math.round(e.score * 100);
-      const ec = emotionColor(e.name);
-      return `<span class="emotion-tag" style="color:${ec.color}">${e.name} ${pct}%</span>`;
-    }).join(' ');
-    detailEl.style.display = 'block';
-  } else if (detailEl && !topEmotions) {
-    detailEl.style.display = 'none';
-  }
+  document.getElementById('mic-btn').classList.toggle('recording', on);
+  document.getElementById('mic-label').textContent = on ? 'Stop' : 'Start';
 }
 
 /* ---- Health Check ---- */
@@ -202,6 +251,4 @@ async function checkConnection() {
   }
 }
 
-if (CONFIG.API_URL) {
-  checkConnection();
-}
+if (CONFIG.API_URL) checkConnection();

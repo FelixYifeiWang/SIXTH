@@ -18,37 +18,50 @@
     </div>
   </div>
 
-  <div class="voice-page">
-    <div class="card voice-card">
-      <div class="card-label">Voice Input</div>
-      <div class="voice-controls">
-        <div class="mic-ring" id="ring">
-          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-1 17.93V21H9v2h6v-2h-2v-2.07A8 8 0 0 0 20 11h-2a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93z"/>
-          </svg>
-          <div class="wave-bars">
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-          </div>
+  <div class="main">
+    <!-- Emotion Orb -->
+    <div class="orb-section">
+      <div class="orb-container">
+        <div class="orb-glow" id="orb-glow"></div>
+        <div class="orb" id="orb">
+          <div class="orb-inner"></div>
         </div>
-        <button id="voice-btn" onclick="toggle()">Start Recording</button>
       </div>
-      <div class="voice-result">
-        <div class="voice-transcript" id="voice-transcript"></div>
-        <span class="sentiment-pill" id="sentiment-pill" style="display:none"></span>
-        <div class="emotion-detail" id="emotion-detail" style="display:none"></div>
+      <div class="emotion-label" id="emotion-label">Ready</div>
+      <div class="emotion-sub" id="emotion-sub">Tap start to begin</div>
+    </div>
+
+    <!-- Mic Button -->
+    <button class="mic-btn" id="mic-btn" onclick="toggle()">
+      <div class="mic-btn-ring" id="mic-ring">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-1 17.93V21H9v2h6v-2h-2v-2.07A8 8 0 0 0 20 11h-2a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93z"/>
+        </svg>
+        <div class="pulse-ring" id="pulse-ring"></div>
+      </div>
+      <span class="mic-label" id="mic-label">Start</span>
+    </button>
+
+    <!-- Emotion Bars -->
+    <div class="emotion-bars" id="emotion-bars">
+      <div class="bar-row" id="bar-0">
+        <span class="bar-name" id="bar-name-0">--</span>
+        <div class="bar-track"><div class="bar-fill" id="bar-fill-0"></div></div>
+        <span class="bar-pct" id="bar-pct-0">0%</span>
+      </div>
+      <div class="bar-row" id="bar-1">
+        <span class="bar-name" id="bar-name-1">--</span>
+        <div class="bar-track"><div class="bar-fill" id="bar-fill-1"></div></div>
+        <span class="bar-pct" id="bar-pct-1">0%</span>
+      </div>
+      <div class="bar-row" id="bar-2">
+        <span class="bar-name" id="bar-name-2">--</span>
+        <div class="bar-track"><div class="bar-fill" id="bar-fill-2"></div></div>
+        <span class="bar-pct" id="bar-pct-2">0%</span>
       </div>
     </div>
   </div>
 
-  <!--
-    Configure your backend URL here. Replace with your ngrok tunnel URL.
-    Example: window.CONNECTQ_API_URL = "https://abc123.ngrok-free.dev";
-    Leave empty or remove this block to use same-origin (local dev).
-  -->
   <script>
     window.CONNECTQ_API_URL = "https://connectq-production.up.railway.app";
   </script>
