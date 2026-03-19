@@ -453,31 +453,61 @@ async function startStreaming() {
   voiceWs.onerror = () => {};
 }
 
+// Worker-based timer that isn't throttled in background tabs
+const workerBlob = new Blob([`
+  onmessage = (e) => {
+    setTimeout(() => postMessage('tick'), e.data.ms);
+  };
+`], { type: 'application/javascript' });
+const timerWorker = new Worker(URL.createObjectURL(workerBlob));
+
 function startChunkedRecording() {
-  if (!isStreaming || !audioStream) return;
+  function recordChunk() {
+    if (!isStreaming || !audioStream) return;
 
-  mediaRecorder = new MediaRecorder(audioStream, {
-    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus' : 'audio/webm'
-  });
+    mediaRecorder = new MediaRecorder(audioStream, {
+      mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm'
+    });
 
-  // ondataavailable fires every CHUNK_DURATION ms via timeslice
-  // This works in the background — not affected by setTimeout throttling
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size === 0 || !voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
+    const chunks = [];
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result.split(',')[1];
-      if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
-        voiceWs.send(JSON.stringify({ type: 'audio', data: base64 }));
+    mediaRecorder.onstop = () => {
+      if (chunks.length === 0 || !voiceWs || voiceWs.readyState !== WebSocket.OPEN) {
+        if (isStreaming) recordChunk();
+        return;
+      }
+
+      const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result.split(',')[1];
+        if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+          voiceWs.send(JSON.stringify({ type: 'audio', data: base64 }));
+        }
+      };
+      reader.readAsDataURL(blob);
+
+      if (isStreaming) recordChunk();
+    };
+
+    mediaRecorder.start();
+
+    // Worker timer fires reliably even in background tabs
+    const onTick = () => {
+      timerWorker.removeEventListener('message', onTick);
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
       }
     };
-    reader.readAsDataURL(e.data);
-  };
+    timerWorker.addEventListener('message', onTick);
+    timerWorker.postMessage({ ms: CHUNK_DURATION });
+  }
 
-  // timeslice parameter makes it emit chunks continuously
-  mediaRecorder.start(CHUNK_DURATION);
+  recordChunk();
 }
 
 /* ---- Hug Trigger Visual ---- */
