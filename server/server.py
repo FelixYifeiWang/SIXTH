@@ -46,7 +46,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r".*",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -159,13 +159,12 @@ async def voice_stream(websocket: WebSocket):
     Browser sends base64-encoded audio chunks via WebSocket.
     Server proxies to Hume's streaming API and sends back emotion results.
     """
+    logger.info("Voice stream handshake from origin: %s", websocket.headers.get("origin", "unknown"))
     await websocket.accept()
-    logger.info("Voice stream connected")
+    logger.info("Voice stream accepted")
 
     try:
-        async with hume_client.expression_measurement.stream.connect(
-            config=Config(prosody={})
-        ) as hume_socket:
+        async with hume_client.expression_measurement.stream.connect() as hume_socket:
             logger.info("Connected to Hume streaming API")
 
             async def receive_from_browser():
