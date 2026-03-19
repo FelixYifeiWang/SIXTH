@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ConnectQ</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-title">ConnectQ</div>
+    <div class="header-status">
+      <div class="conn-indicator">
+        <span>Giver</span>
+        <div class="conn-dot" id="conn-giver"></div>
+      </div>
+      <div class="conn-indicator">
+        <span>Receiver</span>
+        <div class="conn-dot" id="conn-receiver"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="dashboard">
+
+    <!-- Left Column: Emotion + Voice -->
+    <div class="col-left">
+      <canvas id="particles"></canvas>
+      <div class="ambient-glow" id="ambient-glow"></div>
+
+      <div class="emotion-section">
+        <div class="orb-container">
+          <div class="orb-ring-2"></div>
+          <div class="orb-ring"></div>
+          <div class="orb" id="orb"></div>
+          <div class="orb-ripple" id="orb-ripple-1"></div>
+          <div class="orb-ripple" id="orb-ripple-2"></div>
+        </div>
+        <div class="emotion-label" id="emotion-label">calm</div>
+        <div class="emotion-intensity" id="emotion-intensity">Gentle</div>
+      </div>
+
+      <div class="card voice-card">
+        <div class="card-label">Voice Input</div>
+        <div class="voice-controls">
+          <div class="mic-ring" id="ring">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-1 17.93V21H9v2h6v-2h-2v-2.07A8 8 0 0 0 20 11h-2a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93z"/>
+            </svg>
+            <div class="wave-bars">
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+            </div>
+          </div>
+          <button id="voice-btn" onclick="toggle()">Start Recording</button>
+        </div>
+        <div class="voice-result">
+          <div class="voice-transcript" id="voice-transcript"></div>
+          <span class="sentiment-pill" id="sentiment-pill" style="display:none"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Sensors + Feed -->
+    <div class="col-right">
+
+      <!-- Motion -->
+      <div class="card">
+        <div class="card-label">Motion</div>
+        <div class="motion-row">
+          <div class="motion-bar-track">
+            <div class="motion-bar-fill" id="motion-bar"></div>
+          </div>
+          <div class="motion-value" id="motion-value">0</div>
+        </div>
+        <div class="motion-pattern">
+          <span class="pattern-icon" id="motion-icon">&mdash;</span>
+          <span class="pattern-label" id="motion-pattern">constant</span>
+        </div>
+      </div>
+
+      <!-- Temperature -->
+      <div class="card card-temp" id="card-temp">
+        <div class="card-label">Temperature</div>
+        <div class="temp-display">
+          <span class="temp-value" id="temp-value">&mdash;</span>
+          <span class="temp-unit">&deg;C</span>
+        </div>
+        <div class="temp-pattern">
+          <span class="pattern-icon" id="temp-icon">&mdash;</span>
+          <span class="pattern-label" id="temp-pattern">constant</span>
+        </div>
+      </div>
+
+      <!-- Touch -->
+      <div class="card">
+        <div class="card-label">Touch</div>
+        <div class="touch-row">
+          <div class="touch-circle" id="touch-circle"></div>
+          <div class="touch-ripple" id="touch-ripple">
+            <div class="touch-ripple-ring"></div>
+            <div class="touch-ripple-ring"></div>
+            <div class="touch-ripple-ring"></div>
+          </div>
+          <span class="touch-label" id="touch-label">No contact</span>
+        </div>
+      </div>
+
+      <!-- Activity Feed -->
+      <div class="card feed-card">
+        <div class="card-label">Activity</div>
+        <div class="feed-list" id="feed-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!--
+    Configure your backend URL here. Replace with your ngrok tunnel URL.
+    Example: window.CONNECTQ_API_URL = "https://abc123.ngrok-free.dev";
+    Leave empty or remove this block to use same-origin (local dev).
+  -->
+  <script>
+    window.CONNECTQ_API_URL = "";
+  </script>
+  <script src="js/app.js"></script>
+</body>
+</html>

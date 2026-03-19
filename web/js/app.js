@@ -1,7 +1,10 @@
 /* ---- Configuration ---- */
 const CONFIG = (() => {
+  // Set window.CONNECTQ_API_URL before this script loads to connect to a remote backend.
+  // Example: window.CONNECTQ_API_URL = "https://abc123.ngrok-free.dev"
   const apiUrl = (window.CONNECTQ_API_URL || '').replace(/\/+$/, '');
   const isRemote = apiUrl.length > 0;
+  const wsProto = apiUrl.startsWith('https') ? 'wss' : 'ws';
   const wsUrl = isRemote ? apiUrl.replace(/^http/, 'ws') : `ws://${location.host}`;
   return { API_URL: apiUrl, WS_URL: wsUrl, IS_REMOTE: isRemote };
 })();
@@ -9,8 +12,8 @@ const CONFIG = (() => {
 /* ---- State ---- */
 const state = {
   emotion: { label: 'calm', microseconds: 1800 },
-  motion: { magnitude: 420, pattern: 'constant' },
-  temperature: { magnitude: 23.8, pattern: 'constant' },
+  motion: { magnitude: 0, pattern: 'constant' },
+  temperature: { magnitude: null, pattern: 'constant' },
   touch: false,
   voice: { transcript: '', sentiment: '' },
   connections: { giver: false, receiver: false },
@@ -41,12 +44,12 @@ function createParticles(count) {
       vx: (Math.random() - 0.5) * 0.3,
       vy: (Math.random() - 0.5) * 0.3,
       alpha: 0.1 + Math.random() * 0.2,
-      color: [212, 168, 84] // amber, will shift with emotion
+      color: [212, 168, 84]
     });
   }
 }
 
-let particleColor = [90, 154, 106]; // calm green
+let particleColor = [90, 154, 106];
 
 function updateParticleColor(label) {
   const l = (label || '').toLowerCase();
@@ -60,7 +63,6 @@ function updateParticleColor(label) {
 function drawParticles() {
   pCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
   for (const p of particles) {
-    // Slowly drift color toward target
     p.color[0] += (particleColor[0] - p.color[0]) * 0.02;
     p.color[1] += (particleColor[1] - p.color[1]) * 0.02;
     p.color[2] += (particleColor[2] - p.color[2]) * 0.02;
@@ -68,7 +70,6 @@ function drawParticles() {
     p.x += p.vx;
     p.y += p.vy;
 
-    // Wrap edges
     if (p.x < 0) p.x = particleCanvas.width;
     if (p.x > particleCanvas.width) p.x = 0;
     if (p.y < 0) p.y = particleCanvas.height;
@@ -144,7 +145,7 @@ function triggerOrbRipple(color) {
     const el = document.getElementById(id);
     el.style.color = color;
     el.classList.remove('animate');
-    void el.offsetWidth; // reflow
+    void el.offsetWidth;
     setTimeout(() => el.classList.add('animate'), i * 200);
   });
 }
@@ -167,14 +168,11 @@ function render() {
   orb.style.boxShadow = `0 0 60px 20px ${ec.shadow}`;
   orb.style.animationDuration = breatheDuration(state.emotion.microseconds) + 's';
 
-  // Ambient glow follows emotion
   const ambientGlow = document.getElementById('ambient-glow');
   ambientGlow.style.background = ec.glow;
 
-  // Update particles color
   updateParticleColor(state.emotion.label);
 
-  // Emotion label with crossfade if changed
   const labelEl = document.getElementById('emotion-label');
   if (state.emotion.label !== prevEmotion) {
     labelEl.classList.add('changing');
@@ -363,7 +361,61 @@ function setRecording(on) {
   document.getElementById('ring').classList.toggle('recording', on);
 }
 
-/* ---- Mock Data ---- */
+/* ---- WebSocket — live connection to backend ---- */
+let ws = null;
+let wsReconnectTimer = null;
+
+function connectWebSocket() {
+  const url = CONFIG.WS_URL + '/ws?name=dashboard';
+  addFeedEntry('Connecting to server...', 'system');
+
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    addFeedEntry('WebSocket unavailable', 'system');
+    return;
+  }
+
+  ws.onopen = () => {
+    updateState({ connections: { giver: false, receiver: true } });
+    addFeedEntry('Connected to server', 'system');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+
+      // Emotion inference result from pipeline
+      if (data.emotion && data.microseconds) {
+        updateState({
+          emotion: { label: data.emotion, microseconds: data.microseconds },
+          touch: data.touch || false,
+          motion: data.speed || state.motion,
+          temperature: data.temperature || state.temperature,
+        });
+        addFeedEntry(`Emotion: ${data.emotion} (${data.microseconds}\u00B5s)`, 'emotion');
+        if (data.touch) {
+          addFeedEntry('Touch detected', 'touch');
+        }
+      }
+    } catch (e) {
+      // ignore non-JSON messages
+    }
+  };
+
+  ws.onclose = () => {
+    updateState({ connections: { giver: false, receiver: false } });
+    addFeedEntry('Disconnected from server', 'system');
+    // Reconnect after 5 seconds
+    wsReconnectTimer = setTimeout(connectWebSocket, 5000);
+  };
+
+  ws.onerror = () => {
+    // onclose will fire after this
+  };
+}
+
+/* ---- Mock Data (fallback when no backend) ---- */
 function initMockData() {
   const mockFeed = [
     { offset: 0, msg: 'Emotion: calm (1800\u00B5s)', type: 'emotion' },
@@ -425,5 +477,13 @@ function startMockDrift() {
 }
 
 /* ---- Init ---- */
-initMockData();
-startMockDrift();
+// Try connecting to backend; fall back to mock data if unavailable
+connectWebSocket();
+
+// Start mock drift only if no backend URL is configured (pure demo mode)
+if (!CONFIG.IS_REMOTE) {
+  initMockData();
+  startMockDrift();
+}
+
+render();
