@@ -58,9 +58,15 @@
       <canvas id="timeline"></canvas>
     </div>
 
-    <!-- Trigger Panel -->
-    <div class="trigger-panel" id="trigger-panel">
-      <div class="trigger-panel-header">Hug Triggers</div>
+  </div>
+
+  <!-- Trigger Panel (top-right, folded by default) -->
+  <div class="trigger-panel collapsed" id="trigger-panel">
+    <button class="trigger-toggle" id="trigger-toggle" onclick="togglePanel()">
+      <span class="trigger-toggle-icon" id="trigger-toggle-icon">&#9776;</span>
+      <span class="trigger-toggle-label">Triggers</span>
+    </button>
+    <div class="trigger-body" id="trigger-body">
       <div class="trigger-grid" id="trigger-grid"></div>
     </div>
   </div>

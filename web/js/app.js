@@ -390,6 +390,9 @@ function showTrigger(emotion, category, microseconds) {
 }
 
 /* ---- Trigger Panel ---- */
+function togglePanel() {
+  document.getElementById('trigger-panel').classList.toggle('collapsed');
+}
 let triggerConfig = null;
 
 async function loadTriggerPanel() {

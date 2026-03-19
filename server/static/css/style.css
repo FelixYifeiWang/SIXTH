@@ -319,26 +319,72 @@ body {
 
 /* ---- Trigger Panel ---- */
 .trigger-panel {
-  width: 100%;
-  max-width: 400px;
-  background: var(--surface);
+  position: fixed;
+  top: 52px;
+  right: 12px;
+  width: 260px;
+  background: rgba(20, 20, 20, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 14px 16px;
+  z-index: 20;
+  overflow: hidden;
+  transition: width 0.3s, box-shadow 0.3s;
 }
 
-.trigger-panel-header {
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.trigger-panel:not(.collapsed) {
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+
+.trigger-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
   color: var(--text-dim);
-  margin-bottom: 10px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.trigger-toggle:hover { color: var(--text-muted); }
+
+.trigger-toggle-icon {
+  font-size: 0.8rem;
+  transition: transform 0.3s;
+}
+
+.trigger-panel:not(.collapsed) .trigger-toggle-icon {
+  transform: rotate(90deg);
+}
+
+.trigger-body {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0 12px 10px;
+  transition: max-height 0.3s, padding 0.3s, opacity 0.2s;
+}
+
+.trigger-panel.collapsed .trigger-body {
+  max-height: 0;
+  padding: 0 12px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.trigger-panel.collapsed {
+  width: auto;
 }
 
 .trigger-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
 
@@ -403,8 +449,7 @@ body {
   .emotion-bars { max-width: 100%; padding: 0 8px; }
   .timeline-section { max-width: 100%; }
   #timeline { height: 60px; }
-  .trigger-panel { max-width: 100%; }
-  .trigger-grid { grid-template-columns: 1fr 1fr; }
+  .trigger-panel { right: 8px; width: 220px; }
   .bar-name { width: 90px; font-size: 0.7rem; }
   .bar-pct { width: 32px; font-size: 0.68rem; }
   .bar-row { gap: 8px; }

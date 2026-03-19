@@ -30,29 +30,29 @@ class TriggerEvent:
 # (threshold, required_hits, window_chunks, category)
 TRIGGER_CONFIG = {
     # COMFORT — strong hug (servo 500-1000μs)
-    "Sadness":       (0.12, 3, 5, "comfort"),
-    "Distress":      (0.12, 3, 5, "comfort"),
-    "Fear":          (0.12, 3, 5, "comfort"),
-    "Empathic Pain": (0.10, 3, 5, "comfort"),
-    "Shame":         (0.10, 3, 5, "comfort"),
-    "Guilt":         (0.10, 3, 5, "comfort"),
-    "Pain":          (0.12, 3, 5, "comfort"),
+    "Sadness":       (0.15, 3, 5, "comfort"),
+    "Distress":      (0.15, 3, 5, "comfort"),
+    "Fear":          (0.15, 3, 5, "comfort"),
+    "Empathic Pain": (0.12, 3, 5, "comfort"),
+    "Shame":         (0.12, 3, 5, "comfort"),
+    "Guilt":         (0.12, 3, 5, "comfort"),
+    "Pain":          (0.15, 3, 5, "comfort"),
 
     # SOOTHE — gentle hug (servo 1000-1500μs)
-    "Anxiety":        (0.12, 4, 6, "soothe"),
-    "Disappointment": (0.12, 3, 5, "soothe"),
-    "Nostalgia":      (0.14, 3, 5, "soothe"),
-    "Tiredness":      (0.10, 4, 6, "soothe"),
-    "Awkwardness":    (0.12, 3, 5, "soothe"),
-    "Confusion":      (0.12, 3, 5, "soothe"),
+    "Anxiety":        (0.15, 4, 6, "soothe"),
+    "Disappointment": (0.15, 3, 5, "soothe"),
+    "Nostalgia":      (0.18, 3, 5, "soothe"),
+    "Tiredness":      (0.12, 4, 6, "soothe"),
+    "Awkwardness":    (0.15, 3, 5, "soothe"),
+    "Confusion":      (0.15, 3, 5, "soothe"),
 
     # CELEBRATE — quick squeeze (servo 800-1200μs)
-    "Joy":        (0.18, 3, 5, "celebrate"),
-    "Love":       (0.16, 3, 5, "celebrate"),
-    "Ecstasy":    (0.16, 2, 4, "celebrate"),
-    "Triumph":    (0.18, 3, 5, "celebrate"),
-    "Pride":      (0.14, 4, 6, "celebrate"),
-    "Excitement": (0.18, 3, 5, "celebrate"),
+    "Joy":        (0.22, 3, 5, "celebrate"),
+    "Love":       (0.20, 3, 5, "celebrate"),
+    "Ecstasy":    (0.20, 2, 4, "celebrate"),
+    "Triumph":    (0.22, 3, 5, "celebrate"),
+    "Pride":      (0.18, 4, 6, "celebrate"),
+    "Excitement": (0.22, 3, 5, "celebrate"),
 }
 
 # Chunk duration in seconds (must match frontend CHUNK_DURATION)
