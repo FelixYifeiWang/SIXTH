@@ -156,8 +156,9 @@ async def websocket_endpoint(websocket: WebSocket, name: str = Query("unknown"))
 async def voice_stream(websocket: WebSocket):
     """Real-time voice emotion streaming.
 
-    Browser sends base64-encoded audio chunks via WebSocket.
-    Server proxies to Hume's streaming API and sends back emotion results.
+    Browser sends base64-encoded webm audio chunks (2s each) via WebSocket.
+    Server saves each chunk as a temp file, sends to Hume streaming API,
+    and returns emotion results back to the browser.
     """
     logger.info("Voice stream handshake from origin: %s", websocket.headers.get("origin", "unknown"))
     await websocket.accept()
@@ -167,21 +168,28 @@ async def voice_stream(websocket: WebSocket):
         async with hume_client.expression_measurement.stream.connect() as hume_socket:
             logger.info("Connected to Hume streaming API")
 
-            async def receive_from_browser():
-                """Receive audio chunks from browser and forward to Hume."""
-                try:
-                    while True:
-                        data = await websocket.receive_text()
-                        msg = json.loads(data)
+            try:
+                while True:
+                    data = await websocket.receive_text()
+                    msg = json.loads(data)
 
-                        if msg.get("type") == "audio":
-                            # Forward base64 audio to Hume (SDK accepts b64 strings directly)
+                    if msg.get("type") == "audio":
+                        # Save base64 webm chunk to temp file
+                        import base64
+                        import tempfile
+                        audio_bytes = base64.b64decode(msg["data"])
+                        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+                            tmp.write(audio_bytes)
+                            tmp_path = tmp.name
+
+                        try:
                             result = await hume_socket.send_file(
-                                file_=msg["data"],
+                                file_=tmp_path,
                                 config=Config(prosody={}),
                             )
+                            logger.debug("Hume result type: %s", type(result).__name__)
 
-                            # Extract top emotions from result
+                            # Extract top emotions from prosody predictions
                             if hasattr(result, "prosody") and result.prosody:
                                 predictions = result.prosody.predictions
                                 if predictions:
@@ -195,6 +203,7 @@ async def voice_stream(websocket: WebSocket):
                                     top = emotions[0]
                                     sentiment = HUME_TO_SENTIMENT.get(top["name"], "neutral")
 
+                                    logger.info("Emotion: %s (%.3f)", top["name"], top["score"])
                                     await websocket.send_text(json.dumps({
                                         "type": "emotion",
                                         "emotion": top["name"],
@@ -202,13 +211,17 @@ async def voice_stream(websocket: WebSocket):
                                         "sentiment": sentiment,
                                         "top_emotions": top_3,
                                     }))
+                                else:
+                                    logger.debug("No prosody predictions in this chunk")
+                            else:
+                                logger.debug("No prosody data in Hume response")
+                        finally:
+                            os.unlink(tmp_path)
 
-                        elif msg.get("type") == "stop":
-                            break
-                except WebSocketDisconnect:
-                    pass
-
-            await receive_from_browser()
+                    elif msg.get("type") == "stop":
+                        break
+            except WebSocketDisconnect:
+                pass
 
     except Exception as e:
         logger.error("Voice stream error: %s", e)

@@ -1,7 +1,9 @@
 /* ---- Configuration ---- */
 const CONFIG = (() => {
-  const wsUrl = `ws://${location.host}`;
-  return { API_URL: '', WS_URL: wsUrl };
+  const apiUrl = (window.CONNECTQ_API_URL || '').replace(/\/+$/, '');
+  const wsProto = apiUrl.startsWith('https') ? 'wss' : 'ws';
+  const wsUrl = apiUrl ? apiUrl.replace(/^http/, 'ws') : `ws://${location.host}`;
+  return { API_URL: apiUrl, WS_URL: wsUrl };
 })();
 
 /* ---- Connection Status ---- */
@@ -29,10 +31,12 @@ function emotionColor(name) {
 
 /* ---- Real-Time Voice Streaming ---- */
 let audioStream = null;
-let audioContext = null;
-let processor = null;
+let mediaRecorder = null;
 let voiceWs = null;
 let isStreaming = false;
+let chunkInterval = null;
+
+const CHUNK_DURATION = 2000; // 2 seconds per chunk for near real-time
 
 async function toggle() {
   if (isStreaming) {
@@ -50,6 +54,7 @@ async function startStreaming() {
     return;
   }
 
+  // Connect WebSocket to server
   voiceWs = new WebSocket(CONFIG.WS_URL + '/ws/voice');
 
   voiceWs.onopen = () => {
@@ -57,7 +62,7 @@ async function startStreaming() {
     isStreaming = true;
     setRecording(true);
     showEmotion('Listening...', '', null);
-    startAudioCapture();
+    startChunkedRecording();
   };
 
   voiceWs.onmessage = (event) => {
@@ -70,7 +75,7 @@ async function startStreaming() {
   };
 
   voiceWs.onclose = () => {
-    stopStreaming();
+    if (isStreaming) stopStreaming();
   };
 
   voiceWs.onerror = () => {
@@ -80,46 +85,58 @@ async function startStreaming() {
   };
 }
 
-function startAudioCapture() {
-  audioContext = new AudioContext({ sampleRate: 16000 });
-  const source = audioContext.createMediaStreamSource(audioStream);
+function startChunkedRecording() {
+  // Record in CHUNK_DURATION segments, send each as a complete audio blob
+  function recordChunk() {
+    if (!isStreaming || !audioStream) return;
 
-  processor = audioContext.createScriptProcessor(4096, 1, 1);
-  processor.onaudioprocess = (e) => {
-    if (!voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
+    mediaRecorder = new MediaRecorder(audioStream, {
+      mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm'
+    });
 
-    const float32 = e.inputBuffer.getChannelData(0);
-    const int16 = new Int16Array(float32.length);
-    for (let i = 0; i < float32.length; i++) {
-      int16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)));
-    }
+    const chunks = [];
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
 
-    const bytes = new Uint8Array(int16.buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const b64 = btoa(binary);
+    mediaRecorder.onstop = async () => {
+      if (chunks.length === 0 || !voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
 
-    voiceWs.send(JSON.stringify({ type: 'audio', data: b64 }));
-  };
+      const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result.split(',')[1]; // strip data:audio/webm;base64,
+        if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+          voiceWs.send(JSON.stringify({ type: 'audio', data: base64 }));
+        }
+      };
+      reader.readAsDataURL(blob);
 
-  source.connect(processor);
-  processor.connect(audioContext.destination);
+      // Start next chunk immediately
+      if (isStreaming) recordChunk();
+    };
+
+    mediaRecorder.start();
+    setTimeout(() => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+      }
+    }, CHUNK_DURATION);
+  }
+
+  recordChunk();
 }
 
 function stopStreaming() {
   isStreaming = false;
   setRecording(false);
 
-  if (processor) {
-    processor.disconnect();
-    processor = null;
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
   }
-  if (audioContext) {
-    audioContext.close();
-    audioContext = null;
-  }
+  mediaRecorder = null;
+
   if (audioStream) {
     audioStream.getTracks().forEach(t => t.stop());
     audioStream = null;
@@ -173,4 +190,18 @@ function showEmotion(statusText, emotion, topEmotions) {
   } else if (detailEl && !topEmotions) {
     detailEl.style.display = 'none';
   }
+}
+
+/* ---- Health Check ---- */
+async function checkConnection() {
+  try {
+    const res = await fetch(CONFIG.API_URL + '/health');
+    setConnected(res.ok);
+  } catch {
+    setConnected(false);
+  }
+}
+
+if (CONFIG.API_URL) {
+  checkConnection();
 }
