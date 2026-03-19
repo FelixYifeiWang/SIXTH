@@ -109,6 +109,11 @@ def _on_signal_write(output: dict) -> None:
 processor = SignalProcessor(write_fn=_on_signal_write)
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/")
 def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))

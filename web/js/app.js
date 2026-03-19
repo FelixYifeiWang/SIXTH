@@ -14,8 +14,8 @@ function setConnected(connected) {
 // Ping the server to check connectivity
 async function checkConnection() {
   try {
-    const res = await fetch(CONFIG.API_URL + '/', { method: 'HEAD', mode: 'no-cors' });
-    setConnected(true);
+    const res = await fetch(CONFIG.API_URL + '/health', { method: 'GET' });
+    setConnected(res.ok);
   } catch {
     setConnected(false);
   }
