@@ -22,7 +22,7 @@ import logging
 
 from signal_processor import SignalProcessor, write_input, INPUT_PATH
 from emotion_inference import run_inference
-from hug_trigger import HugTrigger
+from hug_trigger import HugTrigger, TRIGGER_CONFIG, CHUNK_SECONDS
 
 load_dotenv()
 
@@ -40,8 +40,6 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 os.makedirs(DATA_DIR, exist_ok=True)
-
-voice_path = os.path.join(DATA_DIR, "voice_data.json")
 
 app = FastAPI()
 
@@ -125,6 +123,20 @@ HUME_TO_SENTIMENT = {
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/triggers")
+def get_triggers():
+    """Return trigger config for the frontend panel."""
+    triggers = {}
+    for emotion, (threshold, hits, window, category) in TRIGGER_CONFIG.items():
+        triggers[emotion] = {
+            "threshold": threshold,
+            "hits": hits,
+            "window_seconds": round(window * CHUNK_SECONDS, 1),
+            "category": category,
+        }
+    return triggers
 
 
 @app.get("/")

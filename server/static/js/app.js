@@ -248,6 +248,9 @@ function updateEmotion(emotion, topEmotions) {
 
   // Timeline
   addTimelinePoint(displayEmotion, top.score);
+
+  // Highlight active triggers
+  highlightTriggers(smoothed);
 }
 
 function showStatus(text) {
@@ -381,7 +384,75 @@ function showTrigger(emotion, category, microseconds) {
   const sub = document.getElementById('emotion-sub');
   sub.textContent = `${label} — ${emotion}`;
   sub.style.color = ec.solid;
+
+  // Flash trigger item in panel
+  flashTriggerItem(emotion);
+}
+
+/* ---- Trigger Panel ---- */
+let triggerConfig = null;
+
+async function loadTriggerPanel() {
+  try {
+    const res = await fetch(CONFIG.API_URL + '/api/triggers');
+    triggerConfig = await res.json();
+  } catch {
+    return;
+  }
+
+  const grid = document.getElementById('trigger-grid');
+  if (!grid) return;
+
+  // Group by category
+  const groups = { comfort: [], soothe: [], celebrate: [] };
+  for (const [emotion, cfg] of Object.entries(triggerConfig)) {
+    groups[cfg.category].push({ emotion, ...cfg });
+  }
+
+  const labels = {
+    comfort: 'Comfort Hug',
+    soothe: 'Gentle Hug',
+    celebrate: 'Celebrate',
+  };
+
+  let html = '';
+  for (const [cat, items] of Object.entries(groups)) {
+    if (items.length === 0) continue;
+    html += `<div class="trigger-cat-label ${cat}">${labels[cat]}</div>`;
+    for (const item of items) {
+      const pct = Math.round(item.threshold * 100);
+      html += `<div class="trigger-item" id="trig-${item.emotion.replace(/\s+/g, '-')}">`
+            + `${item.emotion}<span class="thresh">${pct}%</span></div>`;
+    }
+  }
+  grid.innerHTML = html;
+}
+
+function highlightTriggers(topEmotions) {
+  if (!triggerConfig) return;
+
+  // Build a score map from top emotions
+  const scores = {};
+  for (const e of topEmotions) {
+    scores[e.name] = e.score;
+  }
+
+  for (const [emotion, cfg] of Object.entries(triggerConfig)) {
+    const el = document.getElementById('trig-' + emotion.replace(/\s+/g, '-'));
+    if (!el) continue;
+    const score = scores[emotion] || 0;
+    el.classList.toggle('active', score >= cfg.threshold);
+  }
+}
+
+function flashTriggerItem(emotion) {
+  const el = document.getElementById('trig-' + emotion.replace(/\s+/g, '-'));
+  if (!el) return;
+  el.classList.remove('fired');
+  void el.offsetWidth;
+  el.classList.add('fired');
 }
 
 /* ---- Auto-Start ---- */
+loadTriggerPanel();
 startStreaming();

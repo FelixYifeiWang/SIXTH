@@ -27,6 +27,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  overflow-y: auto;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -84,9 +85,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 40px;
-  padding: 24px;
+  gap: 32px;
+  padding: 32px 24px;
   position: relative;
 }
 
@@ -317,6 +317,75 @@ body {
   border-radius: 10px;
 }
 
+/* ---- Trigger Panel ---- */
+.trigger-panel {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.trigger-panel-header {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.trigger-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.trigger-cat-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 0 2px;
+  grid-column: 1 / -1;
+}
+
+.trigger-cat-label.comfort { color: #5a8aba; }
+.trigger-cat-label.soothe { color: #5aaa6a; }
+.trigger-cat-label.celebrate { color: #d4a854; }
+
+.trigger-item {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  padding: 3px 6px;
+  border-radius: 4px;
+  transition: background 0.3s, color 0.3s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trigger-item .thresh {
+  font-size: 0.55rem;
+  opacity: 0.5;
+  margin-left: 2px;
+}
+
+.trigger-item.active {
+  color: var(--text);
+  background: rgba(255,255,255,0.05);
+}
+
+.trigger-item.fired {
+  animation: triggerItemFlash 2s ease-out;
+}
+
+@keyframes triggerItemFlash {
+  0% { background: rgba(255,255,255,0.2); }
+  100% { background: transparent; }
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
   .main {
@@ -334,6 +403,8 @@ body {
   .emotion-bars { max-width: 100%; padding: 0 8px; }
   .timeline-section { max-width: 100%; }
   #timeline { height: 60px; }
+  .trigger-panel { max-width: 100%; }
+  .trigger-grid { grid-template-columns: 1fr 1fr; }
   .bar-name { width: 90px; font-size: 0.7rem; }
   .bar-pct { width: 32px; font-size: 0.68rem; }
   .bar-row { gap: 8px; }
