@@ -8,12 +8,13 @@ Usage:
     python tests/test_stream.py [--host localhost] [--port 8000]
 
 Phases:
-  1. NOISE        — low speed, no touch  (should NOT trigger)
-  2. CONSTANT     — 10 packets at steady ~120 speed  (triggers once on buffer fill)
-  3. TOUCH        — single touch=1 packet  (triggers immediately)
-  4. INCREASING   — speed ramps 500→900  (triggers as characterization shifts)
-  5. DECREASING   — speed drops 900→100  (triggers as pattern flips)
-  6. CONSTANT HI  — 10 more packets at steady ~900  (should NOT re-trigger)
+  1. NOISE            — low speed, no touch  (should NOT trigger)
+  2. CONSTANT ~350    — 10 packets at steady ~350 speed  (triggers once on buffer fill)
+  3. CONSTANT REPEAT  — same range  (should NOT re-trigger)
+  4. TOUCH            — single touch=1 packet  (triggers immediately)
+  5. INCREASING       — speed ramps 500→900  (triggers as characterization shifts)
+  6. CONSTANT HI      — 10 packets at steady ~900  (should NOT re-trigger)
+  7. DECREASING       — speed drops 900→100  (triggers as pattern flips)
 """
 
 import asyncio
@@ -35,34 +36,34 @@ PHASES = [
         ],
     },
     {
-        "name": "CONSTANT SPEED ~120 — fills 10-sample buffer (triggers once)",
+        "name": "CONSTANT SPEED ~350 — fills 10-sample buffer (triggers once)",
         "packets": [
-            {"touch": 0, "speed": 118.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
-            {"touch": 0, "speed": 119.5, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
-            {"touch": 0, "speed": 120.1, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
-            {"touch": 0, "speed": 118.8, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
-            {"touch": 0, "speed": 121.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
-            {"touch": 0, "speed": 119.2, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
-            {"touch": 0, "speed": 120.5, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
-            {"touch": 0, "speed": 118.6, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
-            {"touch": 0, "speed": 120.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
-            {"touch": 0, "speed": 119.7, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
+            {"touch": 0, "speed": 348.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 351.5, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
+            {"touch": 0, "speed": 350.1, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 348.8, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
+            {"touch": 0, "speed": 352.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 349.2, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
+            {"touch": 0, "speed": 350.5, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 348.6, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
+            {"touch": 0, "speed": 350.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 349.7, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
         ],
     },
     {
-        "name": "CONSTANT SPEED REPEATED — same range, should NOT re-trigger",
+        "name": "CONSTANT SPEED REPEATED ~350 — same range, should NOT re-trigger",
         "packets": [
-            {"touch": 0, "speed": 120.3, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
-            {"touch": 0, "speed": 119.1, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
-            {"touch": 0, "speed": 121.2, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
-            {"touch": 0, "speed": 118.9, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
-            {"touch": 0, "speed": 120.7, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 350.3, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 349.1, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
+            {"touch": 0, "speed": 351.2, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 0, "speed": 348.9, "temps": [{"addr": "0x48", "tempC": 22.6}], "device": "giver"},
+            {"touch": 0, "speed": 350.7, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
         ],
     },
     {
         "name": "TOUCH=1 — immediate trigger regardless of buffers",
         "packets": [
-            {"touch": 1, "speed": 119.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
+            {"touch": 1, "speed": 349.0, "temps": [{"addr": "0x48", "tempC": 22.5}], "device": "giver"},
         ],
     },
     {

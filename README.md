@@ -1,4 +1,4 @@
-# MDEMeow
+# ConnectQ
 
 A wearable comfort device that senses your emotional state and responds with gentle servo movement.
 
@@ -17,7 +17,7 @@ SENSOR ARDUINO ──WebSocket──> SERVER (Python) ──WebSocket──> MOT
 2. **Bridge** (`firmware/bridge/sender.py`) forwards sensor packets to the server via WebSocket
 3. **Server** (`server/server.py`) receives packets and passes them to signal processing
 4. **Signal processor** (`server/signal_processor.py`) buffers readings (10 speed samples, 25 temp samples), characterizes each as a magnitude + pattern (`constant` / `increasing` / `decreasing` / `variable`), and only writes `data/input_data.json` when the pattern or magnitude actually changes (>20% shift). Touch and voice bypass buffering and trigger immediately.
-5. **Emotion inference** (`server/emotion_inference.py`) reads `input_data.json`, prompts GPT-4.1-mini, and writes `data/output.json` with an emotion label and a microseconds value (500 = fast/intense, 2500 = slow/gentle)
+5. **Emotion inference** (`server/emotion_inference.py`) is called directly by the server with parsed sensor data, prompts GPT-4.1-mini, and returns an emotion label and a microseconds value (500 = fast/intense, 2500 = slow/gentle)
 6. **Server** sends the result to the receiver Arduino, which drives the servo
 
 **Voice input:** A web page (`server/static/index.html`) at `http://localhost:8000` lets you record audio. The server transcribes it with Whisper, classifies sentiment (happy/sad/mad/love/anxious/neutral), and feeds it into the pipeline.
@@ -25,13 +25,16 @@ SENSOR ARDUINO ──WebSocket──> SERVER (Python) ──WebSocket──> MOT
 ## Project Structure
 
 ```
-MDEMeow/
+ConnectQ/
 ├── server/
 │   ├── server.py                    # FastAPI — WebSocket, endpoints, pipeline orchestration
-│   ├── signal_processor.py          # Buffers sensor data, detects trends, writes input_data.json
-│   ├── emotion_inference.py         # Prompts GPT-4 for emotion, writes output.json
+│   ├── signal_processor.py          # Buffers sensor data, detects trends via SignalProcessor class
+│   ├── emotion_inference.py         # Importable module — run_inference() calls GPT-4
 │   ├── requirements.txt             # Python dependencies
-│   ├── static/index.html            # Voice recording web UI
+│   ├── static/
+│   │   ├── index.html               # Dashboard UI (markup only)
+│   │   ├── css/style.css            # All styles
+│   │   └── js/app.js                # All client-side logic
 │   ├── tests/
 │   │   ├── test_signal_processor.py # Unit test — fake sensor stream
 │   │   └── test_stream.py           # Integration test — fake packets over WebSocket

@@ -1,17 +1,12 @@
 """
-signal_processor.py — Parse and normalize the giver Arduino stream into input_data.json.
+signal_processor.py — Parse and normalize the giver Arduino stream.
 
 Writes input_data.json only when a trigger condition is met:
   - touch is detected (touch == 1)
   - voice data exists (voice_data.json written by /upload_audio endpoint)
   - speed or temperature signal pattern/magnitude changes meaningfully
-    (evaluated after collecting SPEED_SAMPLE_SIZE=10 / TEMP_SAMPLE_SIZE=25 samples via softmax characterization)
-
-Speed/temp are no longer threshold-based. Instead, 10 samples are collected and
-softmax-weighted to produce a magnitude + pattern ("constant", "increasing",
-"decreasing", "variable"). A write is only triggered when that characterization
-changes — preventing constant re-firing when a signal is stable above any fixed
-threshold.
+    (evaluated after collecting SPEED_SAMPLE_SIZE / TEMP_SAMPLE_SIZE samples
+    via softmax characterization)
 
 Usage:
     Pipe the serial/WebSocket stream to stdin:
@@ -25,56 +20,31 @@ import json
 import math
 import re
 import os
+import logging
 from collections import deque
-from typing import Optional
+from typing import Optional, Callable
 
+logger = logging.getLogger(__name__)
 
-SPEED_SAMPLE_SIZE = 10   # samples to collect before characterizing speed
-TEMP_SAMPLE_SIZE  = 25   # larger window for temperature (gradual changes)
-WINDOW_SIZE = 5          # legacy smoothing window (kept for process_stream compat)
-SPEED_MIN_MAGNITUDE = 300  # below this mean speed, movement is resting — no speed trigger
-SPEED_COOLDOWN = 10      # after a speed-triggered write, ignore speed for this many packets
-TEMP_COOLDOWN = 25       # same for temperature (matches its larger sample window)
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-# Rolling sample buffers for softmax characterization
-speed_samples: deque = deque(maxlen=SPEED_SAMPLE_SIZE)
-temp_samples: deque = deque(maxlen=TEMP_SAMPLE_SIZE)
-
-# Consecutive outlier rejections — if too many in a row, the signal has genuinely
-# shifted and the buffer should be cleared so the new regime can fill in.
+SPEED_SAMPLE_SIZE = 10
+TEMP_SAMPLE_SIZE = 25
+SPEED_MIN_MAGNITUDE = 300
+SPEED_COOLDOWN = 10
+TEMP_COOLDOWN = 25
 OUTLIER_CONSEC_LIMIT = 3
-_speed_consec_outliers: int = 0
-
-# Cooldown counters — packets remaining before speed/temp can trigger again
-_speed_cooldown: int = 0
-_temp_cooldown: int = 0
-
-# Last written characterization — used to detect meaningful change
-_last_speed_char: Optional[dict] = None
-_last_temp_char: Optional[dict] = None
 
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(BASE_DIR, "data")
-input_path = os.path.join(DATA_DIR, "input_data.json")
-voice_path = os.path.join(DATA_DIR, "voice_data.json")
-
-
-def reset(clear_history=False):
-    """Clear sample buffers. Optionally clear cached characterizations too."""
-    global _last_speed_char, _last_temp_char, _speed_consec_outliers
-    global _speed_cooldown, _temp_cooldown
-    speed_samples.clear()
-    temp_samples.clear()
-    _speed_consec_outliers = 0
-    _speed_cooldown = 0
-    _temp_cooldown = 0
-    if clear_history:
-        _last_speed_char = None
-        _last_temp_char = None
+INPUT_PATH = os.path.join(DATA_DIR, "input_data.json")
+VOICE_PATH = os.path.join(DATA_DIR, "voice_data.json")
 
 
 # ---------------------------------------------------------------------------
-# Parsing helpers
+# Pure helpers (no state)
 # ---------------------------------------------------------------------------
 
 def parse_line(line: str) -> Optional[dict]:
@@ -97,7 +67,7 @@ def extract_temp(temps: list) -> Optional[float]:
     return None
 
 
-def load_voice() -> Optional[dict]:
+def load_voice(voice_path: str = VOICE_PATH) -> Optional[dict]:
     """Read voice_data.json if it exists (written by /upload_audio in server.py)."""
     try:
         with open(voice_path) as f:
@@ -105,10 +75,6 @@ def load_voice() -> Optional[dict]:
     except (FileNotFoundError, json.JSONDecodeError):
         return None
 
-
-# ---------------------------------------------------------------------------
-# Softmax signal characterization
-# ---------------------------------------------------------------------------
 
 def softmax(values: list) -> list:
     """Numerically stable softmax over a list of floats."""
@@ -125,14 +91,13 @@ def analyze_signal(samples: deque) -> dict:
     Characterize a signal buffer using softmax-weighted statistics.
 
     Returns:
-        magnitude  — softmax-weighted average of the raw samples
+        magnitude  — trimmed-mean of the raw samples
         pattern    — "constant" | "increasing" | "decreasing" | "variable"
     """
     values = list(samples)
     if len(values) == 1:
         return {"magnitude": round(values[0], 2), "pattern": "unknown"}
 
-    # Trimmed mean: drop highest and lowest value to suppress outlier pull
     sorted_v = sorted(values)
     trimmed = sorted_v[1:-1] if len(sorted_v) > 2 else sorted_v
     mean = sum(trimmed) / len(trimmed)
@@ -168,144 +133,182 @@ def signal_changed(prev: Optional[dict], curr: Optional[dict]) -> bool:
     return abs(curr_mag - prev_mag) / (abs(prev_mag) + 1e-6) > 0.20
 
 
-# ---------------------------------------------------------------------------
-# Writing
-# ---------------------------------------------------------------------------
-
-def write_input(output: dict) -> None:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(input_path, "w") as f:
+def write_input(output: dict, path: str = INPUT_PATH) -> None:
+    """Write processed signal data to input_data.json."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
         json.dump(output, f, indent=2)
 
 
 # ---------------------------------------------------------------------------
-# Packet processing (called from server.py)
+# SignalProcessor — encapsulates all mutable state
 # ---------------------------------------------------------------------------
 
-def process_packet(raw: dict) -> None:
-    """Process a single already-parsed packet — called directly from server.py.
+class SignalProcessor:
+    """Buffers sensor data, detects meaningful changes, and triggers writes.
 
-    Triggers a write to input_data.json when:
-      - touch == 1  (immediate)
-      - voice data present  (immediate)
-      - speed buffer has >= SPEED_SAMPLE_SIZE samples AND characterization changed
-      - temp buffer has >= TEMP_SAMPLE_SIZE samples AND characterization changed
+    Args:
+        write_fn: Called with a dict when a trigger fires.
+                  Defaults to writing input_data.json.
+        voice_fn: Called with no args to load current voice data.
+                  Defaults to reading voice_data.json.
     """
-    global _last_speed_char, _last_temp_char, _speed_consec_outliers
-    global _speed_cooldown, _temp_cooldown
 
-    if raw.get("type") == "hello" or "speed" not in raw:
-        return
+    def __init__(
+        self,
+        write_fn: Optional[Callable[[dict], None]] = None,
+        voice_fn: Optional[Callable[[], Optional[dict]]] = None,
+    ):
+        self._write_fn = write_fn or write_input
+        self._voice_fn = voice_fn or load_voice
 
-    touch = bool(raw.get("touch", 0))
-    voice = load_voice()
-    has_voice = bool(voice and (voice.get("transcript") or voice.get("sentiment")))
+        self.speed_samples: deque = deque(maxlen=SPEED_SAMPLE_SIZE)
+        self.temp_samples: deque = deque(maxlen=TEMP_SAMPLE_SIZE)
 
-    # Touch fires immediately — no buffer needed
-    if touch:
-        write_input({
-            "voice": voice if voice else {"transcript": "", "sentiment": ""},
-            "speed": None,
-            "temperature": None,
-            "touch": True,
-        })
-        print("[signal_processor] WRITE — triggers=['touch']")
-        return
+        self._speed_consec_outliers: int = 0
+        self._speed_cooldown: int = 0
+        self._temp_cooldown: int = 0
+        self._last_speed_char: Optional[dict] = None
+        self._last_temp_char: Optional[dict] = None
 
-    raw_speed = raw.get("speed", 0.0)
-    raw_temp = extract_temp(raw.get("temps", []))
+    def reset(self, clear_history: bool = False) -> None:
+        """Clear sample buffers. Optionally clear cached characterizations."""
+        self.speed_samples.clear()
+        self.temp_samples.clear()
+        self._speed_consec_outliers = 0
+        self._speed_cooldown = 0
+        self._temp_cooldown = 0
+        if clear_history:
+            self._last_speed_char = None
+            self._last_temp_char = None
 
-    # Accumulate samples — reject outliers (> 5x current buffer median).
-    # If many consecutive values are rejected, the signal has genuinely shifted
-    # to a new regime: clear the buffer and accept the new value.
-    if speed_samples:
-        sorted_s = sorted(speed_samples)
-        median_s = sorted_s[len(sorted_s) // 2]
-        if median_s > 0 and raw_speed > median_s * 5:
-            _speed_consec_outliers += 1
-            if _speed_consec_outliers >= OUTLIER_CONSEC_LIMIT:
-                print(f"[signal_processor] regime shift detected: {_speed_consec_outliers} consecutive "
-                      f"rejections, clearing speed buffer (median was {median_s:.1f})")
-                speed_samples.clear()
-                _speed_consec_outliers = 0
-            else:
-                print(f"[signal_processor] outlier rejected: speed={raw_speed:.1f} (median={median_s:.1f})")
-                raw_speed = None
-        else:
-            _speed_consec_outliers = 0
-    if raw_speed is not None:
-        speed_samples.append(raw_speed)
-    if raw_temp is not None:
-        temp_samples.append(raw_temp)
+    def process_packet(self, raw: dict) -> None:
+        """Process a single already-parsed packet.
 
-    speed_char = analyze_signal(speed_samples) if speed_samples else None
-    temp_char = analyze_signal(temp_samples) if temp_samples else None
-
-    # Tick down cooldowns
-    if _speed_cooldown > 0:
-        _speed_cooldown -= 1
-    if _temp_cooldown > 0:
-        _temp_cooldown -= 1
-
-    speed_ready = len(speed_samples) >= SPEED_SAMPLE_SIZE
-    temp_ready = len(temp_samples) >= TEMP_SAMPLE_SIZE
-    speed_above_min = speed_char is not None and speed_char["magnitude"] >= SPEED_MIN_MAGNITUDE
-    speed_trigger = (speed_ready and speed_above_min
-                     and _speed_cooldown == 0
-                     and signal_changed(_last_speed_char, speed_char))
-    temp_trigger = (temp_ready
-                    and _temp_cooldown == 0
-                    and signal_changed(_last_temp_char, temp_char))
-
-    if not has_voice and not speed_trigger and not temp_trigger:
-        return
-
-    # Commit characterization and start cooldown only when writing
-    if speed_trigger:
-        _last_speed_char = speed_char
-        _speed_cooldown = SPEED_COOLDOWN
-    if temp_trigger:
-        _last_temp_char = temp_char
-        _temp_cooldown = TEMP_COOLDOWN
-
-    output = {
-        "voice": voice if voice else {"transcript": "", "sentiment": ""},
-        "speed": speed_char,
-        "temperature": temp_char,
-        "touch": touch,
-    }
-    write_input(output)
-
-    reasons = []
-    if has_voice:
-        reasons.append("voice")
-    if speed_trigger:
-        reasons.append(f"speed-{speed_char['pattern']}@{speed_char['magnitude']:.0f}")
-    if temp_trigger and temp_char:
-        reasons.append(f"temp-{temp_char['pattern']}@{temp_char['magnitude']:.1f}C")
-    print(f"[signal_processor] WRITE — triggers={reasons}")
-
-
-# ---------------------------------------------------------------------------
-# Stream processing (used by tests and CLI)
-# ---------------------------------------------------------------------------
-
-def process_stream(stream) -> None:
-    for line in stream:
-        line = line.strip()
-        if not line:
-            continue
-
-        raw = parse_line(line)
-        if raw is None:
-            continue
-
+        Triggers a write when:
+          - touch == 1  (immediate)
+          - voice data present  (immediate)
+          - speed buffer full AND characterization changed
+          - temp buffer full AND characterization changed
+        """
         if raw.get("type") == "hello" or "speed" not in raw:
-            continue
+            return
 
-        process_packet(raw)
+        touch = bool(raw.get("touch", 0))
+        voice = self._voice_fn()
+        has_voice = bool(voice and (voice.get("transcript") or voice.get("sentiment")))
+
+        # Touch fires immediately
+        if touch:
+            self._write_fn({
+                "voice": voice if voice else {"transcript": "", "sentiment": ""},
+                "speed": None,
+                "temperature": None,
+                "touch": True,
+            })
+            logger.info("WRITE — triggers=['touch']")
+            return
+
+        raw_speed = raw.get("speed", 0.0)
+        raw_temp = extract_temp(raw.get("temps", []))
+
+        # Outlier rejection for speed
+        if self.speed_samples:
+            sorted_s = sorted(self.speed_samples)
+            median_s = sorted_s[len(sorted_s) // 2]
+            if median_s > 0 and raw_speed > median_s * 5:
+                self._speed_consec_outliers += 1
+                if self._speed_consec_outliers >= OUTLIER_CONSEC_LIMIT:
+                    logger.info(
+                        "regime shift detected: %d consecutive rejections, "
+                        "clearing speed buffer (median was %.1f)",
+                        self._speed_consec_outliers, median_s,
+                    )
+                    self.speed_samples.clear()
+                    self._speed_consec_outliers = 0
+                else:
+                    logger.debug("outlier rejected: speed=%.1f (median=%.1f)", raw_speed, median_s)
+                    raw_speed = None
+            else:
+                self._speed_consec_outliers = 0
+
+        if raw_speed is not None:
+            self.speed_samples.append(raw_speed)
+        if raw_temp is not None:
+            self.temp_samples.append(raw_temp)
+
+        speed_char = analyze_signal(self.speed_samples) if self.speed_samples else None
+        temp_char = analyze_signal(self.temp_samples) if self.temp_samples else None
+
+        # Tick down cooldowns
+        if self._speed_cooldown > 0:
+            self._speed_cooldown -= 1
+        if self._temp_cooldown > 0:
+            self._temp_cooldown -= 1
+
+        speed_ready = len(self.speed_samples) >= SPEED_SAMPLE_SIZE
+        temp_ready = len(self.temp_samples) >= TEMP_SAMPLE_SIZE
+        speed_above_min = speed_char is not None and speed_char["magnitude"] >= SPEED_MIN_MAGNITUDE
+        speed_trigger = (speed_ready and speed_above_min
+                         and self._speed_cooldown == 0
+                         and signal_changed(self._last_speed_char, speed_char))
+        temp_trigger = (temp_ready
+                        and self._temp_cooldown == 0
+                        and signal_changed(self._last_temp_char, temp_char))
+
+        if not has_voice and not speed_trigger and not temp_trigger:
+            return
+
+        if speed_trigger:
+            self._last_speed_char = speed_char
+            self._speed_cooldown = SPEED_COOLDOWN
+        if temp_trigger:
+            self._last_temp_char = temp_char
+            self._temp_cooldown = TEMP_COOLDOWN
+
+        output = {
+            "voice": voice if voice else {"transcript": "", "sentiment": ""},
+            "speed": speed_char,
+            "temperature": temp_char,
+            "touch": touch,
+        }
+        self._write_fn(output)
+
+        reasons = []
+        if has_voice:
+            reasons.append("voice")
+        if speed_trigger:
+            reasons.append(f"speed-{speed_char['pattern']}@{speed_char['magnitude']:.0f}")
+        if temp_trigger and temp_char:
+            reasons.append(f"temp-{temp_char['pattern']}@{temp_char['magnitude']:.1f}C")
+        logger.info("WRITE — triggers=%s", reasons)
+
+    def process_stream(self, stream) -> None:
+        """Process a text stream of JSON lines (used by tests and CLI)."""
+        for line in stream:
+            line = line.strip()
+            if not line:
+                continue
+            raw = parse_line(line)
+            if raw is None:
+                continue
+            if raw.get("type") == "hello" or "speed" not in raw:
+                continue
+            self.process_packet(raw)
+
+
+# ---------------------------------------------------------------------------
+# Module-level default instance (backward compatibility with server.py)
+# ---------------------------------------------------------------------------
+
+_default = SignalProcessor()
+
+process_packet = _default.process_packet
+process_stream = _default.process_stream
+reset = _default.reset
 
 
 if __name__ == "__main__":
-    print("signal_processor.py: reading giver stream from stdin → data/input_data.json")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
+    logger.info("reading giver stream from stdin → data/input_data.json")
     process_stream(sys.stdin)
