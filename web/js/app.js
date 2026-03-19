@@ -279,6 +279,82 @@ function showStatus(text) {
   document.getElementById('emotion-sub').style.color = '';
 }
 
+/* ---- Waveform Visualizer ---- */
+let analyser = null;
+let audioCtx = null;
+let waveAnimId = null;
+
+function startWaveform(stream) {
+  audioCtx = new AudioContext();
+  const source = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.8;
+  source.connect(analyser);
+  drawWaveform();
+}
+
+function drawWaveform() {
+  waveAnimId = requestAnimationFrame(drawWaveform);
+
+  const canvas = document.getElementById('waveform');
+  if (!canvas || !analyser) return;
+
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  const cx = w / 2;
+  const cy = h / 2;
+  const baseRadius = Math.min(cx, cy) * 0.65;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+
+  // Get current emotion color from CSS variable
+  const color = getComputedStyle(document.documentElement)
+    .getPropertyValue('--emotion-color').trim() || '#666';
+
+  const bars = 64;
+  const step = Math.floor(data.length / bars);
+
+  for (let i = 0; i < bars; i++) {
+    const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
+    const val = data[i * step] / 255;
+    const barLen = val * baseRadius * 0.4 + 2;
+
+    const x1 = cx + Math.cos(angle) * (baseRadius + 4);
+    const y1 = cy + Math.sin(angle) * (baseRadius + 4);
+    const x2 = cx + Math.cos(angle) * (baseRadius + 4 + barLen);
+    const y2 = cy + Math.sin(angle) * (baseRadius + 4 + barLen);
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.3 + val * 0.5;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function stopWaveform() {
+  if (waveAnimId) cancelAnimationFrame(waveAnimId);
+  waveAnimId = null;
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  analyser = null;
+  const canvas = document.getElementById('waveform');
+  if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
 /* ---- Always-On Voice Streaming ---- */
 let audioStream = null;
 let mediaRecorder = null;
@@ -294,6 +370,7 @@ async function startStreaming() {
   if (!audioStream) {
     try {
       audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startWaveform(audioStream);
     } catch (err) {
       showStatus('Mic access denied');
       setTimeout(startStreaming, RECONNECT_DELAY);

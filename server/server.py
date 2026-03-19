@@ -264,11 +264,11 @@ async def voice_stream(websocket: WebSocket):
 
                 for name, score in _extract_emotions(getattr(result, "prosody", None)):
                     sources.append("prosody") if "prosody" not in sources else None
-                    fused[name] = fused.get(name, 0) + score * 0.9
+                    fused[name] = fused.get(name, 0) + score * 0.8
 
                 for name, score in _extract_emotions(getattr(result, "burst", None)):
                     sources.append("burst") if "burst" not in sources else None
-                    fused[name] = fused.get(name, 0) + score * 0.1
+                    fused[name] = fused.get(name, 0) + score * 0.2
 
                 if not fused:
                     continue

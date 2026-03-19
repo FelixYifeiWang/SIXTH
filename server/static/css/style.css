@@ -110,6 +110,15 @@ body {
   height: 180px;
 }
 
+.waveform-canvas {
+  position: absolute;
+  inset: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  pointer-events: none;
+  z-index: 1;
+}
+
 .orb-glow {
   position: absolute;
   inset: -40px;
