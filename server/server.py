@@ -184,7 +184,7 @@ async def voice_stream(websocket: WebSocket):
                         try:
                             result = await hume_socket.send_file(
                                 file_=tmp_path,
-                                config=Config(prosody={}, burst={}, language={"granularity": "sentence"}),
+                                config=Config(prosody={}, burst={}),
                             )
 
                             # Check for error response
@@ -218,19 +218,7 @@ async def voice_stream(websocket: WebSocket):
                             if burst_emos:
                                 sources.append("burst")
                                 for name, score in burst_emos:
-                                    fused[name] = fused.get(name, 0) + score * 0.25
-
-                            lang_result = getattr(result, "language", None)
-                            lang_emos = _extract(lang_result)
-                            transcript = ""
-                            if lang_emos:
-                                sources.append("language")
-                                for name, score in lang_emos:
-                                    fused[name] = fused.get(name, 0) + score * 0.15
-                                # Extract transcript
-                                preds = getattr(lang_result, "predictions", None)
-                                if preds and len(preds) > 0:
-                                    transcript = getattr(preds[0], "text", "") or ""
+                                    fused[name] = fused.get(name, 0) + score * 0.4
 
                             if not fused:
                                 logger.debug("No emotions in this chunk")
@@ -246,22 +234,17 @@ async def voice_stream(websocket: WebSocket):
                             top = emotions[0]
                             sentiment = HUME_TO_SENTIMENT.get(top["name"], "neutral")
 
-                            logger.info("Emotion: %s (%.3f) [%s]%s",
-                                        top["name"], top["score"], "+".join(sources),
-                                        f' "{transcript}"' if transcript else "")
+                            logger.info("Emotion: %s (%.3f) [%s]",
+                                        top["name"], top["score"], "+".join(sources))
 
-                            payload = {
+                            await websocket.send_text(json.dumps({
                                 "type": "emotion",
                                 "emotion": top["name"],
                                 "score": top["score"],
                                 "sentiment": sentiment,
                                 "top_emotions": top_3,
                                 "sources": sources,
-                            }
-                            if transcript:
-                                payload["transcript"] = transcript
-
-                            await websocket.send_text(json.dumps(payload))
+                            }))
 
                         finally:
                             os.unlink(tmp_path)
