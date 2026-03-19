@@ -26,15 +26,28 @@ if (CONFIG.API_URL) {
   setInterval(checkConnection, 10000);
 }
 
-/* ---- Sentiment Color ---- */
-function sentimentColor(s) {
-  switch ((s || '').toLowerCase()) {
-    case 'happy': case 'love': return { bg: 'rgba(212,168,84,0.2)', color: '#d4a854' };
-    case 'sad': return { bg: 'rgba(90,122,154,0.2)', color: '#5a7a9a' };
-    case 'mad': return { bg: 'rgba(224,85,85,0.2)', color: '#e05555' };
-    case 'anxious': return { bg: 'rgba(192,120,48,0.2)', color: '#c07830' };
-    default: return { bg: 'rgba(120,120,120,0.15)', color: '#888' };
-  }
+/* ---- Emotion Color ---- */
+function emotionColor(name) {
+  const n = (name || '').toLowerCase();
+  // Warm / positive
+  if (['joy', 'amusement', 'excitement', 'interest', 'pride', 'triumph'].includes(n))
+    return { bg: 'rgba(212,168,84,0.2)', color: '#d4a854' };
+  // Love / admiration
+  if (['love', 'admiration', 'adoration', 'desire', 'romance'].includes(n))
+    return { bg: 'rgba(212,168,84,0.2)', color: '#d4a854' };
+  // Sad
+  if (['sadness', 'disappointment', 'distress', 'nostalgia', 'empathic pain'].includes(n))
+    return { bg: 'rgba(90,122,154,0.2)', color: '#5a7a9a' };
+  // Angry
+  if (['anger', 'contempt', 'disgust', 'annoyance'].includes(n))
+    return { bg: 'rgba(224,85,85,0.2)', color: '#e05555' };
+  // Anxious / fear
+  if (['anxiety', 'fear', 'horror', 'awkwardness', 'confusion'].includes(n))
+    return { bg: 'rgba(192,120,48,0.2)', color: '#c07830' };
+  // Calm
+  if (['calmness', 'contentment', 'relief', 'satisfaction', 'serenity'].includes(n))
+    return { bg: 'rgba(90,154,106,0.2)', color: '#5a9a6a' };
+  return { bg: 'rgba(120,120,120,0.15)', color: '#888' };
 }
 
 /* ---- Voice Recording ---- */
@@ -64,10 +77,14 @@ async function toggle() {
     try {
       const res = await fetch(CONFIG.API_URL + '/upload_audio', { method: 'POST', body: form });
       const data = await res.json();
-      showTranscript(data.transcript || '', data.sentiment || '');
+      if (data.status === 'error') {
+        showTranscript(data.message || 'Analysis failed', '', null);
+      } else {
+        showTranscript(data.transcript || '', data.emotion || '', data.top_emotions || []);
+      }
       setConnected(true);
     } catch (err) {
-      showTranscript('Upload failed — check server connection', '');
+      showTranscript('Upload failed — check server connection', '', null);
       setConnected(false);
     }
   };
@@ -82,21 +99,23 @@ function setRecording(on) {
   document.getElementById('ring').classList.toggle('recording', on);
 }
 
-function showTranscript(text, sentiment) {
+function showTranscript(text, emotion, topEmotions) {
   const transcriptEl = document.getElementById('voice-transcript');
   const pillEl = document.getElementById('sentiment-pill');
+  const detailEl = document.getElementById('emotion-detail');
 
   if (text) {
-    transcriptEl.textContent = text.startsWith('Upload') ? text : '\u201C' + text + '\u201D';
+    const isStatus = text.startsWith('Upload') || text.startsWith('Analysis');
+    transcriptEl.textContent = isStatus ? text : '\u201C' + text + '\u201D';
     transcriptEl.classList.remove('typing');
     void transcriptEl.offsetWidth;
     transcriptEl.classList.add('typing');
 
-    if (sentiment) {
-      const sc = sentimentColor(sentiment);
-      pillEl.textContent = sentiment;
-      pillEl.style.background = sc.bg;
-      pillEl.style.color = sc.color;
+    if (emotion) {
+      const ec = emotionColor(emotion);
+      pillEl.textContent = emotion;
+      pillEl.style.background = ec.bg;
+      pillEl.style.color = ec.color;
       pillEl.style.display = 'inline-block';
       pillEl.classList.remove('pop');
       void pillEl.offsetWidth;
@@ -104,8 +123,20 @@ function showTranscript(text, sentiment) {
     } else {
       pillEl.style.display = 'none';
     }
+
+    if (detailEl && topEmotions && topEmotions.length > 0) {
+      detailEl.innerHTML = topEmotions.map(e => {
+        const pct = Math.round(e.score * 100);
+        const ec = emotionColor(e.name);
+        return `<span class="emotion-tag" style="color:${ec.color}">${e.name} ${pct}%</span>`;
+      }).join(' ');
+      detailEl.style.display = 'block';
+    } else if (detailEl) {
+      detailEl.style.display = 'none';
+    }
   } else {
     transcriptEl.textContent = '';
     pillEl.style.display = 'none';
+    if (detailEl) detailEl.style.display = 'none';
   }
 }
