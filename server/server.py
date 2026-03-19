@@ -184,41 +184,58 @@ async def voice_stream(websocket: WebSocket):
                         try:
                             result = await hume_socket.send_file(
                                 file_=tmp_path,
-                                config=Config(prosody={}),
+                                config=Config(prosody={}, burst={}),
                             )
-
-                            logger.debug("Hume response attrs: %s",
-                                         [a for a in dir(result) if not a.startswith('_')])
 
                             # Check for error response
                             if hasattr(result, "error") and result.error:
                                 logger.warning("Hume error: %s", result.error)
                                 continue
 
-                            # Extract emotions from prosody
-                            emotions = []
-                            if hasattr(result, "prosody") and result.prosody:
-                                preds = getattr(result.prosody, "predictions", None)
-                                if preds and len(preds) > 0:
-                                    emo_list = getattr(preds[0], "emotions", None)
-                                    if emo_list:
-                                        emotions = sorted(
-                                            [{"name": e.name, "score": round(e.score, 4)}
-                                             for e in emo_list],
-                                            key=lambda x: x["score"],
-                                            reverse=True,
-                                        )
+                            # Helper to extract emotions from a model result
+                            def _extract(model_result):
+                                if not model_result:
+                                    return []
+                                preds = getattr(model_result, "predictions", None)
+                                if not preds or len(preds) == 0:
+                                    return []
+                                emo_list = getattr(preds[0], "emotions", None)
+                                if not emo_list:
+                                    return []
+                                return [(e.name, e.score) for e in emo_list]
 
-                            if not emotions:
-                                logger.debug("No emotions in this chunk (prosody=%s)",
-                                             "present" if hasattr(result, "prosody") and result.prosody else "absent")
+                            # Collect from each model with weights
+                            fused = {}
+                            sources = []
+
+                            prosody_emos = _extract(getattr(result, "prosody", None))
+                            if prosody_emos:
+                                sources.append("prosody")
+                                for name, score in prosody_emos:
+                                    fused[name] = fused.get(name, 0) + score * 0.6
+
+                            burst_emos = _extract(getattr(result, "burst", None))
+                            if burst_emos:
+                                sources.append("burst")
+                                for name, score in burst_emos:
+                                    fused[name] = fused.get(name, 0) + score * 0.4
+
+                            if not fused:
+                                logger.debug("No emotions in this chunk")
                                 continue
+
+                            emotions = sorted(
+                                [{"name": k, "score": round(v, 4)} for k, v in fused.items()],
+                                key=lambda x: x["score"],
+                                reverse=True,
+                            )
 
                             top_3 = emotions[:3]
                             top = emotions[0]
                             sentiment = HUME_TO_SENTIMENT.get(top["name"], "neutral")
 
-                            logger.info("Emotion: %s (%.3f)", top["name"], top["score"])
+                            logger.info("Emotion: %s (%.3f) [%s]",
+                                        top["name"], top["score"], "+".join(sources))
 
                             await websocket.send_text(json.dumps({
                                 "type": "emotion",
@@ -226,6 +243,7 @@ async def voice_stream(websocket: WebSocket):
                                 "score": top["score"],
                                 "sentiment": sentiment,
                                 "top_emotions": top_3,
+                                "sources": sources,
                             }))
 
                         finally:
