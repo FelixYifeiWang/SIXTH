@@ -118,28 +118,27 @@ function showStatus(text) {
   document.getElementById('emotion-sub').style.color = '';
 }
 
-/* ---- Real-Time Voice Streaming ---- */
+/* ---- Always-On Voice Streaming ---- */
 let audioStream = null;
 let mediaRecorder = null;
 let voiceWs = null;
 let isStreaming = false;
 
 const CHUNK_DURATION = 2000;
-
-async function toggle() {
-  if (isStreaming) {
-    stopStreaming();
-    return;
-  }
-  startStreaming();
-}
+const RECONNECT_DELAY = 3000;
 
 async function startStreaming() {
-  try {
-    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (err) {
-    showStatus('Mic access denied');
-    return;
+  if (isStreaming) return;
+
+  if (!audioStream) {
+    try {
+      audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      showStatus('Mic access denied');
+      // Retry — user may grant permission later
+      setTimeout(startStreaming, RECONNECT_DELAY);
+      return;
+    }
   }
 
   voiceWs = new WebSocket(CONFIG.WS_URL + '/ws/voice');
@@ -147,7 +146,6 @@ async function startStreaming() {
   voiceWs.onopen = () => {
     setConnected(true);
     isStreaming = true;
-    setRecording(true);
     showStatus('Listening...');
     startChunkedRecording();
   };
@@ -162,13 +160,14 @@ async function startStreaming() {
   };
 
   voiceWs.onclose = () => {
-    if (isStreaming) stopStreaming();
+    isStreaming = false;
+    setConnected(false);
+    showStatus('Reconnecting...');
+    setTimeout(startStreaming, RECONNECT_DELAY);
   };
 
   voiceWs.onerror = () => {
-    showStatus('Connection failed');
-    setConnected(false);
-    stopStreaming();
+    // onclose will fire and handle reconnect
   };
 }
 
@@ -213,42 +212,5 @@ function startChunkedRecording() {
   recordChunk();
 }
 
-function stopStreaming() {
-  isStreaming = false;
-  setRecording(false);
-
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-  }
-  mediaRecorder = null;
-
-  if (audioStream) {
-    audioStream.getTracks().forEach(t => t.stop());
-    audioStream = null;
-  }
-  if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
-    voiceWs.send(JSON.stringify({ type: 'stop' }));
-    voiceWs.close();
-  }
-  voiceWs = null;
-
-  showStatus('Ready');
-  document.getElementById('emotion-sub').textContent = 'Tap start to begin';
-}
-
-function setRecording(on) {
-  document.getElementById('mic-btn').classList.toggle('recording', on);
-  document.getElementById('mic-label').textContent = on ? 'Stop' : 'Start';
-}
-
-/* ---- Health Check ---- */
-async function checkConnection() {
-  try {
-    const res = await fetch(CONFIG.API_URL + '/health');
-    setConnected(res.ok);
-  } catch {
-    setConnected(false);
-  }
-}
-
-if (CONFIG.API_URL) checkConnection();
+/* ---- Auto-Start ---- */
+startStreaming();
