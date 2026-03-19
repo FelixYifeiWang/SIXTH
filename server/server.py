@@ -1,20 +1,35 @@
+"""
+server.py — FastAPI application for ConnectQ emotion-sensing comfort device.
+
+Receives sensor data from the giver Arduino via WebSocket, processes it through
+signal_processor and emotion_inference, and sends servo commands to the receiver.
+"""
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from contextlib import asynccontextmanager
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from openai import OpenAI
 import asyncio
-import subprocess
 import shutil
 import json
 import os
 import time
+import logging
 from datetime import datetime
 
-import signal_processor
+from signal_processor import SignalProcessor, write_input, INPUT_PATH
+from emotion_inference import run_inference
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 BASE_DIR = os.path.dirname(__file__)
@@ -25,18 +40,9 @@ AUDIO_DIR = os.path.join(DATA_DIR, "received_audio")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-input_path = os.path.join(DATA_DIR, "input_data.json")
-output_path = os.path.join(DATA_DIR, "output.json")
 voice_path = os.path.join(DATA_DIR, "voice_data.json")
 
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    asyncio.create_task(input_watcher())
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +51,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 # Track connected Arduinos by name
 connected_arduinos: dict[str, WebSocket] = {}
 
@@ -52,58 +60,53 @@ _last_pipeline_time: float = 0.0
 PIPELINE_COOLDOWN = 2.0  # seconds between pipeline runs
 
 
-async def run_pipeline(priority: bool = False):
-    """Run emotion_inference.py then send output.json to the receiver Arduino.
+async def run_pipeline(priority: bool = False) -> None:
+    """Run emotion inference and send result to the receiver Arduino.
 
     priority=True bypasses the cooldown (used for touch and voice triggers).
     """
     global _last_pipeline_time
     now = time.time()
     if not priority and now - _last_pipeline_time < PIPELINE_COOLDOWN:
-        print(f"[pipeline] cooldown active, skipping ({PIPELINE_COOLDOWN}s between runs)")
+        logger.debug("cooldown active, skipping (%.1fs between runs)", PIPELINE_COOLDOWN)
         return
     _last_pipeline_time = now
-    print("[pipeline] running emotion_inference.py...")
-    result = subprocess.run(
-        ["python", os.path.join(BASE_DIR, "emotion_inference.py")],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        print(f"[pipeline] emotion_inference.py error:\n{result.stderr}")
-        return
-    print(f"[pipeline] emotion_inference.py done: {result.stdout.strip()}")
 
-    if not os.path.exists(output_path):
-        print("[pipeline] output.json not found, skipping send")
+    try:
+        with open(INPUT_PATH) as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error("could not read input_data.json: %s", e)
         return
 
-    with open(output_path) as f:
-        payload = json.load(f)
+    logger.info("running emotion inference...")
+    try:
+        result = await asyncio.to_thread(run_inference, data, client)
+    except ValueError as e:
+        logger.error("emotion inference failed: %s", e)
+        return
+
+    logger.info("emotion inference done: %s %dμs", result.get("emotion"), result.get("microseconds", 0))
 
     receiver = connected_arduinos.get("receiver")
     if receiver:
-        await receiver.send_text(json.dumps(payload))
-        print(f"[pipeline] sent to receiver: {payload}")
+        await receiver.send_text(json.dumps(result))
+        logger.info("sent to receiver: %s", result.get("emotion"))
     else:
-        print(f"[pipeline] receiver not connected, output.json ready but not sent")
+        logger.info("receiver not connected, result ready but not sent")
 
 
-async def input_watcher():
-    """Watch input_data.json for changes and auto-trigger the pipeline."""
-    async def watcher():
-        last_mtime = None
-        while True:
-            try:
-                mtime = os.path.getmtime(input_path)
-                if last_mtime is not None and mtime != last_mtime:
-                    print("[watcher] input_data.json changed — triggering pipeline")
-                    await run_pipeline()
-                last_mtime = mtime
-            except FileNotFoundError:
-                pass
-            await asyncio.sleep(1)
+def _on_signal_write(output: dict) -> None:
+    """Callback from SignalProcessor — write file and schedule pipeline."""
+    write_input(output)
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(run_pipeline())
+    except RuntimeError:
+        pass
 
-    asyncio.create_task(watcher())
+
+processor = SignalProcessor(write_fn=_on_signal_write)
 
 
 @app.get("/")
@@ -111,32 +114,31 @@ def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
-# --- WebSocket: Arduinos connect with ?name=receiver ---
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, name: str = Query("unknown")):
     await websocket.accept()
     connected_arduinos[name] = websocket
-    print(f"Arduino '{name}' connected. Total: {len(connected_arduinos)}")
+    logger.info("Arduino '%s' connected. Total: %d", name, len(connected_arduinos))
     try:
         while True:
             data = await websocket.receive_text()
-            print(f"[{name}] received: {data}")
+            logger.debug("[%s] received: %s", name, data)
             try:
                 raw = json.loads(data)
                 if "speed" in raw and (name == "giver" or raw.get("device") == "giver"):
-                    signal_processor.process_packet(raw)
+                    processor.process_packet(raw)
                     if raw.get("touch"):
                         asyncio.create_task(run_pipeline(priority=True))
             except json.JSONDecodeError:
                 pass
     except WebSocketDisconnect:
         connected_arduinos.pop(name, None)
-        print(f"Arduino '{name}' disconnected. Total: {len(connected_arduinos)}")
+        logger.info("Arduino '%s' disconnected. Total: %d", name, len(connected_arduinos))
 
 
-# --- Send output.json to the receiver Arduino ---
 @app.post("/send_output")
 async def send_output():
+    output_path = os.path.join(DATA_DIR, "output.json")
     if not os.path.exists(output_path):
         return {"status": "error", "message": "output.json not found"}
 
@@ -151,13 +153,12 @@ async def send_output():
         return {"status": "receiver_not_connected", "result": result}
 
 
-# --- Audio upload from index.html ---
 @app.post("/upload_audio")
 async def upload_audio(file: UploadFile = File(...)):
     filename = os.path.join(AUDIO_DIR, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.webm")
     with open(filename, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    print(f"Saved: {filename}")
+    logger.info("saved audio: %s", filename)
 
     with open(filename, "rb") as audio_file:
         transcription = client.audio.transcriptions.create(
@@ -165,7 +166,7 @@ async def upload_audio(file: UploadFile = File(...)):
             file=audio_file,
         )
     transcript = transcription.text
-    print(f"Transcript: {transcript}")
+    logger.info("transcript: %s", transcript)
 
     sentiment_response = client.chat.completions.create(
         model="gpt-4.1-mini",
@@ -173,13 +174,13 @@ async def upload_audio(file: UploadFile = File(...)):
         temperature=0,
     )
     sentiment = sentiment_response.choices[0].message.content.strip().lower()
-    print(f"Sentiment: {sentiment}")
+    logger.info("sentiment: %s", sentiment)
 
     with open(voice_path, "w") as f:
         json.dump({"transcript": transcript, "sentiment": sentiment}, f, indent=2)
 
     try:
-        with open(input_path) as f:
+        with open(INPUT_PATH) as f:
             existing = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         existing = {"speed": 0.0, "temperature": None, "touch": False}
@@ -190,9 +191,8 @@ async def upload_audio(file: UploadFile = File(...)):
         "temperature": existing.get("temperature"),
         "touch": existing.get("touch", False),
     }
-    with open(input_path, "w") as f:
-        json.dump(output, f, indent=2)
-    print(f"[upload_audio] wrote input_data.json — triggering pipeline (priority)")
+    write_input(output)
+    logger.info("wrote input_data.json — triggering pipeline (priority)")
     asyncio.create_task(run_pipeline(priority=True))
 
     return {"status": "received", "filename": filename, "transcript": transcript, "sentiment": sentiment}
