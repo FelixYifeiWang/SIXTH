@@ -246,7 +246,7 @@ async def voice_stream(websocket: WebSocket):
                 try:
                     result = await hume_socket.send_file(
                         file_=tmp_path,
-                        config=Config(prosody={}, burst={}),
+                        config=Config(prosody={}),
                     )
                 except Exception as e:
                     logger.warning("Hume send failed, will reconnect: %s", e)
@@ -264,11 +264,7 @@ async def voice_stream(websocket: WebSocket):
 
                 for name, score in _extract_emotions(getattr(result, "prosody", None)):
                     sources.append("prosody") if "prosody" not in sources else None
-                    fused[name] = fused.get(name, 0) + score * 0.8
-
-                for name, score in _extract_emotions(getattr(result, "burst", None)):
-                    sources.append("burst") if "burst" not in sources else None
-                    fused[name] = fused.get(name, 0) + score * 0.2
+                    fused[name] = fused.get(name, 0) + score
 
                 if not fused:
                     continue
