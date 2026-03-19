@@ -1,3 +1,14 @@
+/* ---- Configuration ---- */
+const CONFIG = (() => {
+  const wsUrl = `ws://${location.host}`;
+  return { API_URL: '', WS_URL: wsUrl };
+})();
+
+/* ---- Connection Status ---- */
+function setConnected(connected) {
+  document.getElementById('conn-server').classList.toggle('connected', connected);
+}
+
 /* ---- Emotion Color ---- */
 function emotionColor(name) {
   const n = (name || '').toLowerCase();
@@ -16,91 +27,150 @@ function emotionColor(name) {
   return { bg: 'rgba(120,120,120,0.15)', color: '#888' };
 }
 
-/* ---- Voice Recording ---- */
-let mediaRecorder, chunks = [];
+/* ---- Real-Time Voice Streaming ---- */
+let audioStream = null;
+let audioContext = null;
+let processor = null;
+let voiceWs = null;
+let isStreaming = false;
 
 async function toggle() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
+  if (isStreaming) {
+    stopStreaming();
+    return;
+  }
+  startStreaming();
+}
+
+async function startStreaming() {
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    showEmotion('Microphone access denied', '', null);
     return;
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  chunks = [];
+  voiceWs = new WebSocket(CONFIG.WS_URL + '/ws/voice');
 
-  mediaRecorder.ondataavailable = e => chunks.push(e.data);
+  voiceWs.onopen = () => {
+    setConnected(true);
+    isStreaming = true;
+    setRecording(true);
+    showEmotion('Listening...', '', null);
+    startAudioCapture();
+  };
 
-  mediaRecorder.onstop = async () => {
-    stream.getTracks().forEach(t => t.stop());
-    const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
-    const form = new FormData();
-    form.append('file', blob, 'recording.webm');
-
-    setRecording(false);
-    showTranscript('Uploading...', '', null);
-
-    try {
-      const res = await fetch('/upload_audio', { method: 'POST', body: form });
-      const data = await res.json();
-      if (data.status === 'error') {
-        showTranscript(data.message || 'Analysis failed', '', null);
-      } else {
-        showTranscript(data.transcript || '', data.emotion || '', data.top_emotions || []);
-      }
-    } catch (err) {
-      showTranscript('Upload failed', '', null);
+  voiceWs.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'emotion') {
+      showEmotion('', data.emotion, data.top_emotions);
+    } else if (data.type === 'error') {
+      showEmotion(data.message || 'Error', '', null);
     }
   };
 
-  mediaRecorder.start();
-  setRecording(true);
+  voiceWs.onclose = () => {
+    stopStreaming();
+  };
+
+  voiceWs.onerror = () => {
+    showEmotion('Connection failed', '', null);
+    setConnected(false);
+    stopStreaming();
+  };
+}
+
+function startAudioCapture() {
+  audioContext = new AudioContext({ sampleRate: 16000 });
+  const source = audioContext.createMediaStreamSource(audioStream);
+
+  processor = audioContext.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = (e) => {
+    if (!voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
+
+    const float32 = e.inputBuffer.getChannelData(0);
+    const int16 = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      int16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)));
+    }
+
+    const bytes = new Uint8Array(int16.buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const b64 = btoa(binary);
+
+    voiceWs.send(JSON.stringify({ type: 'audio', data: b64 }));
+  };
+
+  source.connect(processor);
+  processor.connect(audioContext.destination);
+}
+
+function stopStreaming() {
+  isStreaming = false;
+  setRecording(false);
+
+  if (processor) {
+    processor.disconnect();
+    processor = null;
+  }
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  if (audioStream) {
+    audioStream.getTracks().forEach(t => t.stop());
+    audioStream = null;
+  }
+  if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+    voiceWs.send(JSON.stringify({ type: 'stop' }));
+    voiceWs.close();
+  }
+  voiceWs = null;
 }
 
 function setRecording(on) {
-  document.getElementById('voice-btn').textContent = on ? 'Stop Recording' : 'Start Recording';
+  document.getElementById('voice-btn').textContent = on ? 'Stop' : 'Start';
   document.getElementById('voice-btn').classList.toggle('recording', on);
   document.getElementById('ring').classList.toggle('recording', on);
 }
 
-function showTranscript(text, emotion, topEmotions) {
+function showEmotion(statusText, emotion, topEmotions) {
   const transcriptEl = document.getElementById('voice-transcript');
   const pillEl = document.getElementById('sentiment-pill');
   const detailEl = document.getElementById('emotion-detail');
 
-  if (text) {
-    const isStatus = text.startsWith('Upload') || text.startsWith('Analysis');
-    transcriptEl.textContent = isStatus ? text : '\u201C' + text + '\u201D';
+  if (statusText) {
+    transcriptEl.textContent = statusText;
     transcriptEl.classList.remove('typing');
     void transcriptEl.offsetWidth;
     transcriptEl.classList.add('typing');
+  }
 
-    if (emotion) {
-      const ec = emotionColor(emotion);
-      pillEl.textContent = emotion;
-      pillEl.style.background = ec.bg;
-      pillEl.style.color = ec.color;
-      pillEl.style.display = 'inline-block';
-      pillEl.classList.remove('pop');
-      void pillEl.offsetWidth;
-      pillEl.classList.add('pop');
-    } else {
-      pillEl.style.display = 'none';
-    }
-
-    if (detailEl && topEmotions && topEmotions.length > 0) {
-      detailEl.innerHTML = topEmotions.map(e => {
-        const pct = Math.round(e.score * 100);
-        const ec = emotionColor(e.name);
-        return `<span class="emotion-tag" style="color:${ec.color}">${e.name} ${pct}%</span>`;
-      }).join(' ');
-      detailEl.style.display = 'block';
-    } else if (detailEl) {
-      detailEl.style.display = 'none';
-    }
-  } else {
+  if (emotion) {
     transcriptEl.textContent = '';
+    const ec = emotionColor(emotion);
+    pillEl.textContent = emotion;
+    pillEl.style.background = ec.bg;
+    pillEl.style.color = ec.color;
+    pillEl.style.display = 'inline-block';
+    pillEl.classList.remove('pop');
+    void pillEl.offsetWidth;
+    pillEl.classList.add('pop');
+  } else if (!statusText) {
     pillEl.style.display = 'none';
-    if (detailEl) detailEl.style.display = 'none';
+  }
+
+  if (detailEl && topEmotions && topEmotions.length > 0) {
+    detailEl.innerHTML = topEmotions.map(e => {
+      const pct = Math.round(e.score * 100);
+      const ec = emotionColor(e.name);
+      return `<span class="emotion-tag" style="color:${ec.color}">${e.name} ${pct}%</span>`;
+    }).join(' ');
+    detailEl.style.display = 'block';
+  } else if (detailEl && !topEmotions) {
+    detailEl.style.display = 'none';
   }
 }
