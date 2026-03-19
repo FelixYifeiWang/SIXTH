@@ -60,6 +60,17 @@
 
   </div>
 
+  <!-- Log Panel (top-left, folded by default) -->
+  <div class="log-panel collapsed" id="log-panel">
+    <button class="log-toggle" onclick="toggleLog()">
+      <span class="log-toggle-icon" id="log-toggle-icon">&#9638;</span>
+      <span>Log</span>
+    </button>
+    <div class="log-body" id="log-body">
+      <div class="log-list" id="log-list"></div>
+    </div>
+  </div>
+
   <!-- Trigger Panel (top-right, folded by default) -->
   <div class="trigger-panel collapsed" id="trigger-panel">
     <button class="trigger-toggle" id="trigger-toggle" onclick="togglePanel()">

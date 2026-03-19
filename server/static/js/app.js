@@ -10,6 +10,25 @@ function setConnected(connected) {
   document.getElementById('conn-server').classList.toggle('connected', connected);
 }
 
+/* ---- Log Panel ---- */
+const MAX_LOG_ENTRIES = 50;
+
+function toggleLog() {
+  document.getElementById('log-panel').classList.toggle('collapsed');
+}
+
+function addLog(msg, type) {
+  const list = document.getElementById('log-list');
+  if (!list) return;
+  const now = new Date();
+  const time = now.toTimeString().slice(0, 8);
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${type || 'system'}">${msg}</span>`;
+  list.prepend(entry);
+  while (list.children.length > MAX_LOG_ENTRIES) list.lastChild.remove();
+}
+
 /* ---- Emotion Colors ---- */
 // All 48 Hume emotions mapped to visible colors on dark background
 function _c(solid) {
@@ -288,6 +307,7 @@ async function startStreaming() {
     setConnected(true);
     isStreaming = true;
     showStatus('Listening...');
+    addLog('Connected to server', 'system');
     startChunkedRecording();
   };
 
@@ -295,10 +315,15 @@ async function startStreaming() {
     const data = JSON.parse(event.data);
     if (data.type === 'emotion') {
       updateEmotion(data.emotion, data.top_emotions);
+      const pct = Math.round(data.score * 100);
+      const src = (data.sources || []).join('+');
+      addLog(`${data.emotion} ${pct}% [${src}]`, 'emotion');
     } else if (data.type === 'trigger') {
       showTrigger(data.emotion, data.category, data.microseconds);
+      addLog(`HUG: ${data.category} — ${data.emotion} (${data.microseconds}μs)`, 'trigger');
     } else if (data.type === 'error') {
       showStatus(data.message || 'Error');
+      addLog(data.message || 'Error', 'error');
     }
   };
 
@@ -306,6 +331,7 @@ async function startStreaming() {
     isStreaming = false;
     setConnected(false);
     showStatus('Reconnecting...');
+    addLog('Disconnected, reconnecting...', 'system');
     setTimeout(startStreaming, RECONNECT_DELAY);
   };
 
