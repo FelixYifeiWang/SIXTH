@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from openai import OpenAI
 from hume import AsyncHumeClient
-from hume.expression_measurement.stream.stream.types import Config
+from hume.expression_measurement.stream.stream.types import Config, StreamLanguage
 import asyncio
 import json
 import os
@@ -174,7 +174,6 @@ async def voice_stream(websocket: WebSocket):
                     msg = json.loads(data)
 
                     if msg.get("type") == "audio":
-                        # Save base64 webm chunk to temp file
                         import base64
                         import tempfile
                         audio_bytes = base64.b64decode(msg["data"])
@@ -185,36 +184,80 @@ async def voice_stream(websocket: WebSocket):
                         try:
                             result = await hume_socket.send_file(
                                 file_=tmp_path,
-                                config=Config(prosody={}),
+                                config=Config(
+                                    prosody={"identify_speakers": True},
+                                    burst={},
+                                    language=StreamLanguage(
+                                        sentiment={},
+                                        toxicity={},
+                                        granularity="sentence",
+                                    ),
+                                ),
                             )
-                            logger.debug("Hume result type: %s", type(result).__name__)
 
-                            # Extract top emotions from prosody predictions
+                            # Fuse emotions from all models
+                            fused = {}
+                            transcript = ""
+                            sources = []
+
+                            # Prosody emotions (weight: 0.5)
                             if hasattr(result, "prosody") and result.prosody:
-                                predictions = result.prosody.predictions
-                                if predictions:
-                                    emotions = sorted(
-                                        [{"name": e.name, "score": round(e.score, 4)}
-                                         for e in predictions[0].emotions],
-                                        key=lambda x: x["score"],
-                                        reverse=True,
-                                    )
-                                    top_3 = emotions[:3]
-                                    top = emotions[0]
-                                    sentiment = HUME_TO_SENTIMENT.get(top["name"], "neutral")
+                                preds = result.prosody.predictions
+                                if preds:
+                                    sources.append("prosody")
+                                    for e in preds[0].emotions:
+                                        fused[e.name] = fused.get(e.name, 0) + e.score * 0.5
 
-                                    logger.info("Emotion: %s (%.3f)", top["name"], top["score"])
-                                    await websocket.send_text(json.dumps({
-                                        "type": "emotion",
-                                        "emotion": top["name"],
-                                        "score": top["score"],
-                                        "sentiment": sentiment,
-                                        "top_emotions": top_3,
-                                    }))
-                                else:
-                                    logger.debug("No prosody predictions in this chunk")
-                            else:
-                                logger.debug("No prosody data in Hume response")
+                            # Vocal burst emotions (weight: 0.3)
+                            if hasattr(result, "burst") and result.burst:
+                                preds = result.burst.predictions
+                                if preds:
+                                    sources.append("burst")
+                                    for e in preds[0].emotions:
+                                        fused[e.name] = fused.get(e.name, 0) + e.score * 0.3
+
+                            # Language emotions (weight: 0.2) + transcript
+                            if hasattr(result, "language") and result.language:
+                                preds = result.language.predictions
+                                if preds:
+                                    sources.append("language")
+                                    for e in preds[0].emotions:
+                                        fused[e.name] = fused.get(e.name, 0) + e.score * 0.2
+                                    if hasattr(preds[0], "text"):
+                                        transcript = preds[0].text or ""
+
+                            if not fused:
+                                logger.debug("No emotion data in this chunk")
+                                continue
+
+                            # Sort fused emotions
+                            emotions = sorted(
+                                [{"name": k, "score": round(v, 4)} for k, v in fused.items()],
+                                key=lambda x: x["score"],
+                                reverse=True,
+                            )
+                            top_3 = emotions[:3]
+                            top = emotions[0]
+                            sentiment = HUME_TO_SENTIMENT.get(top["name"], "neutral")
+
+                            logger.info("Emotion: %s (%.3f) [%s]%s",
+                                        top["name"], top["score"],
+                                        "+".join(sources),
+                                        f" \"{transcript}\"" if transcript else "")
+
+                            payload = {
+                                "type": "emotion",
+                                "emotion": top["name"],
+                                "score": top["score"],
+                                "sentiment": sentiment,
+                                "top_emotions": top_3,
+                                "sources": sources,
+                            }
+                            if transcript:
+                                payload["transcript"] = transcript
+
+                            await websocket.send_text(json.dumps(payload))
+
                         finally:
                             os.unlink(tmp_path)
 

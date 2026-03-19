@@ -154,6 +154,7 @@ async function startStreaming() {
     const data = JSON.parse(event.data);
     if (data.type === 'emotion') {
       updateEmotion(data.emotion, data.top_emotions);
+      showTranscript(data.transcript || '');
     } else if (data.type === 'error') {
       showStatus(data.message || 'Error');
     }
@@ -210,6 +211,16 @@ function startChunkedRecording() {
   }
 
   recordChunk();
+}
+
+function showTranscript(text) {
+  const el = document.getElementById('transcript');
+  if (text) {
+    el.textContent = '\u201C' + text + '\u201D';
+    el.classList.add('active');
+  } else {
+    el.classList.remove('active');
+  }
 }
 
 /* ---- Auto-Start ---- */

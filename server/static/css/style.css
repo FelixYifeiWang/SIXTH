@@ -254,6 +254,24 @@ body {
   color: var(--text-muted);
 }
 
+/* ---- Transcript ---- */
+.transcript {
+  max-width: 340px;
+  width: 100%;
+  min-height: 1.4rem;
+  font-size: 0.78rem;
+  color: #555;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.5;
+  transition: color 0.4s;
+}
+
+.transcript.active {
+  color: #888;
+  animation: fadeIn 0.4s ease-out;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
   .main {
