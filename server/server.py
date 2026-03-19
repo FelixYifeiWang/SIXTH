@@ -154,142 +154,156 @@ async def websocket_endpoint(websocket: WebSocket, name: str = Query("unknown"))
         logger.info("Arduino '%s' disconnected. Total: %d", name, len(connected_arduinos))
 
 
+def _extract_emotions(model_result):
+    """Extract (name, score) pairs from a Hume model result."""
+    if not model_result:
+        return []
+    preds = getattr(model_result, "predictions", None)
+    if not preds or len(preds) == 0:
+        return []
+    emo_list = getattr(preds[0], "emotions", None)
+    if not emo_list:
+        return []
+    return [(e.name, e.score) for e in emo_list]
+
+
 @app.websocket("/ws/voice")
 async def voice_stream(websocket: WebSocket):
     """Real-time voice emotion streaming.
 
-    Browser sends base64-encoded webm audio chunks (2s each) via WebSocket.
-    Server saves each chunk as a temp file, sends to Hume streaming API,
-    and returns emotion results back to the browser.
+    Browser sends base64-encoded webm audio chunks via WebSocket.
+    Server sends to Hume streaming API and returns emotion results.
+    Auto-reconnects to Hume if the connection drops.
     """
-    logger.info("Voice stream handshake from origin: %s", websocket.headers.get("origin", "unknown"))
-    await websocket.accept()
-    logger.info("Voice stream accepted")
-
     import base64
     import tempfile
 
+    logger.info("Voice stream from origin: %s", websocket.headers.get("origin", "unknown"))
+    await websocket.accept()
+
+    hume_ctx = None
     hume_socket = None
 
-    async def ensure_hume():
-        nonlocal hume_socket
-        if hume_socket is None:
-            ctx = hume_client.expression_measurement.stream.connect()
-            hume_socket = await ctx.__aenter__()
+    async def connect_hume():
+        nonlocal hume_ctx, hume_socket
+        try:
+            hume_ctx = hume_client.expression_measurement.stream.connect()
+            hume_socket = await hume_ctx.__aenter__()
             logger.info("Connected to Hume streaming API")
-        return hume_socket
+        except Exception as e:
+            logger.error("Failed to connect to Hume: %s", e)
+            hume_socket = None
+
+    async def close_hume():
+        nonlocal hume_ctx, hume_socket
+        if hume_ctx:
+            try:
+                await hume_ctx.__aexit__(None, None, None)
+            except Exception:
+                pass
+        hume_ctx = None
+        hume_socket = None
+
+    await connect_hume()
 
     try:
-        await ensure_hume()
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
 
-        try:
-            while True:
-                data = await websocket.receive_text()
-                msg = json.loads(data)
+            if msg.get("type") == "stop":
+                break
 
-                if msg.get("type") == "audio":
-                    audio_bytes = base64.b64decode(msg["data"])
-                    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
-                        tmp.write(audio_bytes)
-                        tmp_path = tmp.name
+            if msg.get("type") != "audio":
+                continue
 
-                    try:
-                        try:
-                            hs = await ensure_hume()
-                            result = await hs.send_file(
-                                file_=tmp_path,
-                                config=Config(prosody={}, burst={}),
-                            )
-                        except Exception as send_err:
-                            logger.warning("Hume send failed, reconnecting: %s", send_err)
-                            hume_socket = None
-                            continue
+            # Decode and save audio chunk
+            audio_bytes = base64.b64decode(msg["data"])
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+                tmp.write(audio_bytes)
+                tmp_path = tmp.name
 
-                        # Check for error response
-                        if hasattr(result, "error") and result.error:
-                            logger.warning("Hume error: %s", result.error)
-                            continue
+            try:
+                # Reconnect if needed
+                if hume_socket is None:
+                    await connect_hume()
+                if hume_socket is None:
+                    continue
 
-                            # Helper to extract emotions from a model result
-                            def _extract(model_result):
-                                if not model_result:
-                                    return []
-                                preds = getattr(model_result, "predictions", None)
-                                if not preds or len(preds) == 0:
-                                    return []
-                                emo_list = getattr(preds[0], "emotions", None)
-                                if not emo_list:
-                                    return []
-                                return [(e.name, e.score) for e in emo_list]
+                # Send to Hume
+                try:
+                    result = await hume_socket.send_file(
+                        file_=tmp_path,
+                        config=Config(prosody={}, burst={}),
+                    )
+                except Exception as e:
+                    logger.warning("Hume send failed, will reconnect: %s", e)
+                    await close_hume()
+                    continue
 
-                            # Collect from each model with weights
-                            fused = {}
-                            sources = []
+                # Check for error
+                if hasattr(result, "error") and result.error:
+                    logger.warning("Hume error: %s", result.error)
+                    continue
 
-                            prosody_emos = _extract(getattr(result, "prosody", None))
-                            if prosody_emos:
-                                sources.append("prosody")
-                                for name, score in prosody_emos:
-                                    fused[name] = fused.get(name, 0) + score * 0.9
+                # Fuse emotions from prosody + burst
+                fused = {}
+                sources = []
 
-                            burst_emos = _extract(getattr(result, "burst", None))
-                            if burst_emos:
-                                sources.append("burst")
-                                for name, score in burst_emos:
-                                    fused[name] = fused.get(name, 0) + score * 0.1
+                for name, score in _extract_emotions(getattr(result, "prosody", None)):
+                    sources.append("prosody") if "prosody" not in sources else None
+                    fused[name] = fused.get(name, 0) + score * 0.9
 
-                            if not fused:
-                                logger.debug("No emotions in this chunk")
-                                continue
+                for name, score in _extract_emotions(getattr(result, "burst", None)):
+                    sources.append("burst") if "burst" not in sources else None
+                    fused[name] = fused.get(name, 0) + score * 0.1
 
-                            emotions = sorted(
-                                [{"name": k, "score": round(v, 4)} for k, v in fused.items()],
-                                key=lambda x: x["score"],
-                                reverse=True,
-                            )
+                if not fused:
+                    continue
 
-                            top_3 = emotions[:3]
-                            top = emotions[0]
-                            sentiment = HUME_TO_SENTIMENT.get(top["name"], "neutral")
+                emotions = sorted(
+                    [{"name": k, "score": round(v, 4)} for k, v in fused.items()],
+                    key=lambda x: x["score"],
+                    reverse=True,
+                )
+                top = emotions[0]
+                sentiment = HUME_TO_SENTIMENT.get(top["name"], "neutral")
 
-                            logger.info("Emotion: %s (%.3f) [%s]",
-                                        top["name"], top["score"], "+".join(sources))
+                logger.info("Emotion: %s (%.3f) [%s]",
+                            top["name"], top["score"], "+".join(sources))
 
-                            await websocket.send_text(json.dumps({
-                                "type": "emotion",
-                                "emotion": top["name"],
-                                "score": top["score"],
-                                "sentiment": sentiment,
-                                "top_emotions": top_3,
-                                "sources": sources,
-                            }))
+                # Send emotion to browser
+                await websocket.send_text(json.dumps({
+                    "type": "emotion",
+                    "emotion": top["name"],
+                    "score": top["score"],
+                    "sentiment": sentiment,
+                    "top_emotions": emotions[:3],
+                    "sources": sources,
+                }))
 
-                            # Check hug trigger
-                            trigger_event = hug_trigger.check(emotions)
-                            if trigger_event:
-                                await websocket.send_text(json.dumps({
-                                    "type": "trigger",
-                                    "emotion": trigger_event.emotion,
-                                    "category": trigger_event.category,
-                                    "microseconds": trigger_event.microseconds,
-                                    "confidence": trigger_event.confidence,
-                                }))
-                                # Send to receiver Arduino if connected
-                                receiver = connected_arduinos.get("receiver")
-                                if receiver:
-                                    await receiver.send_text(json.dumps({
-                                        "microseconds": trigger_event.microseconds,
-                                        "emotion": trigger_event.emotion,
-                                    }))
+                # Check hug trigger
+                trigger_event = hug_trigger.check(emotions)
+                if trigger_event:
+                    await websocket.send_text(json.dumps({
+                        "type": "trigger",
+                        "emotion": trigger_event.emotion,
+                        "category": trigger_event.category,
+                        "microseconds": trigger_event.microseconds,
+                        "confidence": trigger_event.confidence,
+                    }))
+                    receiver = connected_arduinos.get("receiver")
+                    if receiver:
+                        await receiver.send_text(json.dumps({
+                            "microseconds": trigger_event.microseconds,
+                            "emotion": trigger_event.emotion,
+                        }))
 
-                        finally:
-                            os.unlink(tmp_path)
+            finally:
+                os.unlink(tmp_path)
 
-                    elif msg.get("type") == "stop":
-                        break
-            except WebSocketDisconnect:
-                pass
-
+    except WebSocketDisconnect:
+        pass
     except Exception as e:
         logger.error("Voice stream error: %s", e)
         try:
@@ -297,6 +311,7 @@ async def voice_stream(websocket: WebSocket):
         except Exception:
             pass
 
+    await close_hume()
     logger.info("Voice stream disconnected")
 
 
