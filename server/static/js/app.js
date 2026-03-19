@@ -11,74 +11,76 @@ function setConnected(connected) {
 }
 
 /* ---- Emotion Colors ---- */
+// All 48 Hume emotions mapped to visible colors on dark background
+function _c(solid) {
+  const r = parseInt(solid.slice(1,3),16), g = parseInt(solid.slice(3,5),16), b = parseInt(solid.slice(5,7),16);
+  const dark = '#' + [r,g,b].map(c => Math.round(c*0.5).toString(16).padStart(2,'0')).join('');
+  return { solid, glow: `rgba(${r},${g},${b},0.4)`, gradient: [solid, dark] };
+}
+
 const EMOTION_COLORS = {
-  joy:            { solid: '#d4a854', glow: 'rgba(212,168,84,0.4)',  gradient: ['#d4a854', '#8a6a30'] },
-  amusement:      { solid: '#d4a854', glow: 'rgba(212,168,84,0.4)',  gradient: ['#d4a854', '#8a6a30'] },
-  excitement:     { solid: '#e8a040', glow: 'rgba(232,160,64,0.4)',  gradient: ['#e8a040', '#9a6820'] },
-  interest:       { solid: '#c0a060', glow: 'rgba(192,160,96,0.4)',  gradient: ['#c0a060', '#7a6430'] },
-  pride:          { solid: '#d4a854', glow: 'rgba(212,168,84,0.4)',  gradient: ['#d4a854', '#8a6a30'] },
-  triumph:        { solid: '#e8a040', glow: 'rgba(232,160,64,0.4)',  gradient: ['#e8a040', '#9a6820'] },
-  love:           { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
-  admiration:     { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
-  adoration:      { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
-  desire:         { solid: '#c05a70', glow: 'rgba(192,90,112,0.4)',  gradient: ['#c05a70', '#7a2a3a'] },
-  romance:        { solid: '#d46a80', glow: 'rgba(212,106,128,0.4)', gradient: ['#d46a80', '#8a3a4a'] },
-  sadness:        { solid: '#5a7a9a', glow: 'rgba(90,122,154,0.4)',  gradient: ['#5a7a9a', '#3a4a5a'] },
-  disappointment: { solid: '#5a7a9a', glow: 'rgba(90,122,154,0.4)',  gradient: ['#5a7a9a', '#3a4a5a'] },
-  distress:       { solid: '#6a7a8a', glow: 'rgba(106,122,138,0.4)', gradient: ['#6a7a8a', '#3a4a5a'] },
-  nostalgia:      { solid: '#7a8a9a', glow: 'rgba(122,138,154,0.4)', gradient: ['#7a8a9a', '#4a5a6a'] },
-  anger:          { solid: '#e05555', glow: 'rgba(224,85,85,0.4)',   gradient: ['#e05555', '#7a2a2a'] },
-  contempt:       { solid: '#c04545', glow: 'rgba(192,69,69,0.4)',   gradient: ['#c04545', '#6a2020'] },
-  disgust:        { solid: '#9a7a40', glow: 'rgba(154,122,64,0.4)',  gradient: ['#9a7a40', '#5a4a20'] },
-  annoyance:      { solid: '#c06040', glow: 'rgba(192,96,64,0.4)',   gradient: ['#c06040', '#7a3a20'] },
-  anxiety:        { solid: '#c07830', glow: 'rgba(192,120,48,0.4)',  gradient: ['#c07830', '#7a4a1a'] },
-  fear:           { solid: '#9a6a9a', glow: 'rgba(154,106,154,0.4)', gradient: ['#9a6a9a', '#5a3a5a'] },
-  horror:         { solid: '#8a4a6a', glow: 'rgba(138,74,106,0.4)',  gradient: ['#8a4a6a', '#4a2a3a'] },
-  awkwardness:    { solid: '#9a8a70', glow: 'rgba(154,138,112,0.4)', gradient: ['#9a8a70', '#5a4a30'] },
-  confusion:      { solid: '#8a8a6a', glow: 'rgba(138,138,106,0.4)', gradient: ['#8a8a6a', '#4a4a2a'] },
-  calmness:       { solid: '#5a9a6a', glow: 'rgba(90,154,106,0.4)', gradient: ['#5a9a6a', '#2a5a3a'] },
-  contentment:    { solid: '#5a9a6a', glow: 'rgba(90,154,106,0.4)', gradient: ['#5a9a6a', '#2a5a3a'] },
-  relief:         { solid: '#6aaa7a', glow: 'rgba(106,170,122,0.4)',gradient: ['#6aaa7a', '#3a6a4a'] },
-  satisfaction:   { solid: '#7aaa6a', glow: 'rgba(122,170,106,0.4)',gradient: ['#7aaa6a', '#4a6a3a'] },
-  serenity:       { solid: '#5a9a8a', glow: 'rgba(90,154,138,0.4)', gradient: ['#5a9a8a', '#2a5a4a'] },
+  // Joy / positive energy
+  joy: _c('#d4a854'), amusement: _c('#d4a854'), excitement: _c('#e8a040'),
+  interest: _c('#c0a060'), pride: _c('#d4a854'), triumph: _c('#e8a040'),
+  // Love / warmth
+  love: _c('#d46a80'), admiration: _c('#d46a80'), adoration: _c('#d46a80'),
+  desire: _c('#c05a70'), romance: _c('#d46a80'),
+  // Sadness / blue
+  sadness: _c('#5a8aba'), disappointment: _c('#5a8aba'), distress: _c('#6a8aaa'),
+  nostalgia: _c('#7a9aba'), 'empathic pain': _c('#6a8a9a'),
+  // Anger / red
+  anger: _c('#e05555'), contempt: _c('#c04545'), disgust: _c('#aa7a40'),
+  annoyance: _c('#c06040'),
+  // Anxiety / orange
+  anxiety: _c('#c07830'), fear: _c('#aa6aaa'), horror: _c('#aa4a7a'),
+  awkwardness: _c('#aa9a70'), confusion: _c('#aa9a6a'),
+  // Calm / green
+  calmness: _c('#5aaa6a'), contentment: _c('#5aaa6a'), relief: _c('#6aba7a'),
+  satisfaction: _c('#7aba6a'), serenity: _c('#5aaa8a'),
+  // Missing emotions — now all have bright visible colors
+  tiredness: _c('#8a7aaa'), boredom: _c('#8a8aaa'), concentration: _c('#6a9aba'),
+  contemplation: _c('#7a9aaa'), determination: _c('#ba8a40'), realization: _c('#aa9a5a'),
+  surprise: _c('#baa050'), 'surprise (positive)': _c('#baa050'),
+  'surprise (negative)': _c('#aa7a6a'), sympathy: _c('#7a9a8a'),
+  craving: _c('#ba7a5a'), entrancement: _c('#8a7aba'), envy: _c('#6a9a6a'),
+  guilt: _c('#7a7aaa'), pain: _c('#aa5a5a'), shame: _c('#8a6a8a'),
+  ecstasy: _c('#daba5a'), aesthetic_appreciation: _c('#9aaa8a'),
+  awe: _c('#7a8aba'), embarrassment: _c('#ba7a7a'),
 };
 
-const DEFAULT_COLOR = { solid: '#444', glow: 'rgba(68,68,68,0.3)', gradient: ['#3a3535', '#1a1515'] };
+const DEFAULT_COLOR = _c('#8a8a9a'); // visible light grey for any unmapped emotion
 
 function getEmotionColor(name) {
   return EMOTION_COLORS[(name || '').toLowerCase()] || DEFAULT_COLOR;
 }
 
-/* ---- Smoothing ---- */
-// Exponential moving average over the last few readings to reduce jitter
-const SMOOTH_ALPHA = 0.4; // 0 = no smoothing, 1 = no memory
-let smoothedScores = {}; // { emotionName: smoothedScore }
+/* ---- Rolling Window Smoothing ---- */
+// Keep last N readings and weight recent ones higher
+const WINDOW_SIZE = 4;
+const WINDOW_WEIGHTS = [0.1, 0.15, 0.25, 0.5]; // oldest → newest
+const recentReadings = []; // [topEmotions array, ...]
 
 function smoothEmotions(rawEmotions) {
-  const newSmoothed = {};
+  recentReadings.push(rawEmotions);
+  if (recentReadings.length > WINDOW_SIZE) recentReadings.shift();
 
-  for (const e of rawEmotions) {
-    const prev = smoothedScores[e.name] || 0;
-    newSmoothed[e.name] = prev * (1 - SMOOTH_ALPHA) + e.score * SMOOTH_ALPHA;
-  }
-
-  // Decay emotions not in current reading
-  for (const [name, score] of Object.entries(smoothedScores)) {
-    if (!(name in newSmoothed)) {
-      const decayed = score * (1 - SMOOTH_ALPHA);
-      if (decayed > 0.01) newSmoothed[name] = decayed;
+  const fused = {};
+  for (let i = 0; i < recentReadings.length; i++) {
+    // Align weight index to the end (newest gets highest weight)
+    const wi = WINDOW_WEIGHTS.length - recentReadings.length + i;
+    const weight = WINDOW_WEIGHTS[wi];
+    for (const e of recentReadings[i]) {
+      fused[e.name] = (fused[e.name] || 0) + e.score * weight;
     }
   }
 
-  smoothedScores = newSmoothed;
-
-  return Object.entries(newSmoothed)
+  return Object.entries(fused)
     .map(([name, score]) => ({ name, score: Math.round(score * 10000) / 10000 }))
     .sort((a, b) => b.score - a.score);
 }
 
 /* ---- Emotion Timeline ---- */
-const TIMELINE_MAX = 40; // data points (40 * 1.5s = 60s)
+const TIMELINE_MAX = 20; // data points (20 * 3s = 60s)
 const timeline = []; // [{ time, emotion, color, score }]
 
 function addTimelinePoint(emotion, score) {
@@ -261,7 +263,7 @@ let mediaRecorder = null;
 let voiceWs = null;
 let isStreaming = false;
 
-const CHUNK_DURATION = 1500; // 1.5 seconds for faster updates
+const CHUNK_DURATION = 3000; // 3 seconds for more accurate prosody analysis
 const RECONNECT_DELAY = 3000;
 
 async function startStreaming() {
