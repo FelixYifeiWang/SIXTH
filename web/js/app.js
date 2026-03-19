@@ -80,7 +80,7 @@ function smoothEmotions(rawEmotions) {
 }
 
 /* ---- Emotion Timeline ---- */
-const TIMELINE_MAX = 20; // data points (20 * 3s = 60s)
+const TIMELINE_MAX = 40; // data points (40 * 1.5s = 60s)
 const timeline = []; // [{ time, emotion, color, score }]
 
 function addTimelinePoint(emotion, score) {
@@ -263,7 +263,7 @@ let mediaRecorder = null;
 let voiceWs = null;
 let isStreaming = false;
 
-const CHUNK_DURATION = 3000; // 3 seconds for more accurate prosody analysis
+const CHUNK_DURATION = 1500;
 const RECONNECT_DELAY = 3000;
 
 async function startStreaming() {
