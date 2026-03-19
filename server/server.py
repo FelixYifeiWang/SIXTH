@@ -212,13 +212,13 @@ async def voice_stream(websocket: WebSocket):
                             if prosody_emos:
                                 sources.append("prosody")
                                 for name, score in prosody_emos:
-                                    fused[name] = fused.get(name, 0) + score * 0.6
+                                    fused[name] = fused.get(name, 0) + score * 0.9
 
                             burst_emos = _extract(getattr(result, "burst", None))
                             if burst_emos:
                                 sources.append("burst")
                                 for name, score in burst_emos:
-                                    fused[name] = fused.get(name, 0) + score * 0.4
+                                    fused[name] = fused.get(name, 0) + score * 0.1
 
                             if not fused:
                                 logger.debug("No emotions in this chunk")
