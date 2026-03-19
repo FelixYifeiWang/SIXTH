@@ -22,6 +22,7 @@ import logging
 
 from signal_processor import SignalProcessor, write_input, INPUT_PATH
 from emotion_inference import run_inference
+from hug_trigger import HugTrigger
 
 load_dotenv()
 
@@ -101,6 +102,7 @@ def _on_signal_write(output: dict) -> None:
 
 
 processor = SignalProcessor(write_fn=_on_signal_write)
+hug_trigger = HugTrigger()
 
 
 # Map Hume's emotion names to simplified sentiment categories
@@ -245,6 +247,24 @@ async def voice_stream(websocket: WebSocket):
                                 "top_emotions": top_3,
                                 "sources": sources,
                             }))
+
+                            # Check hug trigger
+                            trigger_event = hug_trigger.check(emotions)
+                            if trigger_event:
+                                await websocket.send_text(json.dumps({
+                                    "type": "trigger",
+                                    "emotion": trigger_event.emotion,
+                                    "category": trigger_event.category,
+                                    "microseconds": trigger_event.microseconds,
+                                    "confidence": trigger_event.confidence,
+                                }))
+                                # Send to receiver Arduino if connected
+                                receiver = connected_arduinos.get("receiver")
+                                if receiver:
+                                    await receiver.send_text(json.dumps({
+                                        "microseconds": trigger_event.microseconds,
+                                        "emotion": trigger_event.emotion,
+                                    }))
 
                         finally:
                             os.unlink(tmp_path)

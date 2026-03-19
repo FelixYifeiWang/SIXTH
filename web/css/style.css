@@ -254,6 +254,44 @@ body {
   color: var(--text-muted);
 }
 
+/* ---- Trigger ---- */
+.orb.trigger-flash {
+  animation: triggerFlash 1.5s ease-out !important;
+}
+
+@keyframes triggerFlash {
+  0% { transform: scale(1); filter: brightness(1); }
+  15% { transform: scale(1.15); filter: brightness(1.8); }
+  30% { transform: scale(1.05); filter: brightness(1.3); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+.trigger-banner {
+  padding: 6px 20px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.4s, transform 0.4s;
+  pointer-events: none;
+}
+
+.trigger-banner.visible {
+  opacity: 1;
+  transform: translateY(0);
+  animation: bannerPulse 1.5s ease-in-out;
+}
+
+@keyframes bannerPulse {
+  0% { transform: scale(0.9); opacity: 0; }
+  20% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 /* ---- Timeline ---- */
 .timeline-section {
   width: 100%;

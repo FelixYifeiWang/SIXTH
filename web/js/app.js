@@ -292,6 +292,8 @@ async function startStreaming() {
     const data = JSON.parse(event.data);
     if (data.type === 'emotion') {
       updateEmotion(data.emotion, data.top_emotions);
+    } else if (data.type === 'trigger') {
+      showTrigger(data.emotion, data.category, data.microseconds);
     } else if (data.type === 'error') {
       showStatus(data.message || 'Error');
     }
@@ -346,6 +348,39 @@ function startChunkedRecording() {
   }
 
   recordChunk();
+}
+
+/* ---- Hug Trigger Visual ---- */
+const TRIGGER_LABELS = {
+  comfort: 'Comfort Hug',
+  soothe: 'Gentle Hug',
+  celebrate: 'Celebrate!',
+};
+
+function showTrigger(emotion, category, microseconds) {
+  const ec = getEmotionColor(emotion);
+  const label = TRIGGER_LABELS[category] || 'Hug';
+
+  // Flash the orb
+  const orb = document.getElementById('orb');
+  orb.classList.add('trigger-flash');
+  setTimeout(() => orb.classList.remove('trigger-flash'), 1500);
+
+  // Show trigger banner
+  const banner = document.getElementById('trigger-banner');
+  if (banner) {
+    banner.textContent = label;
+    banner.style.color = ec.solid;
+    banner.style.borderColor = ec.solid + '40';
+    banner.style.background = ec.solid + '15';
+    banner.classList.add('visible');
+    setTimeout(() => banner.classList.remove('visible'), 3000);
+  }
+
+  // Update subtitle
+  const sub = document.getElementById('emotion-sub');
+  sub.textContent = `${label} — ${emotion}`;
+  sub.style.color = ec.solid;
 }
 
 /* ---- Auto-Start ---- */
