@@ -207,8 +207,19 @@ window.addEventListener('resize', drawTimeline);
 let prevEmotion = '';
 
 function updateEmotion(emotion, topEmotions) {
+  // Adjust scores by volume — low volume = less confident reading
+  // volume 0→0.1 = quiet (scale 0.6-0.85), 0.1→0.3 = normal (0.85-1.0), 0.3+ = loud (1.0)
+  const vol = currentVolume;
+  const volScale = vol < 0.1 ? 0.6 + vol * 2.5
+                 : vol < 0.3 ? 0.85 + (vol - 0.1) * 0.75
+                 : 1.0;
+  const adjusted = topEmotions.map(e => ({
+    name: e.name,
+    score: e.score * volScale,
+  }));
+
   // Apply smoothing
-  const smoothed = smoothEmotions(topEmotions);
+  const smoothed = smoothEmotions(adjusted);
   const top = smoothed[0];
   const displayEmotion = top.name;
   const ec = getEmotionColor(displayEmotion);
@@ -283,13 +294,14 @@ function showStatus(text) {
 let analyser = null;
 let audioCtx = null;
 let waveAnimId = null;
+let currentVolume = 0; // 0-1, exposed for confidence adjustment
 
 function startWaveform(stream) {
   audioCtx = new AudioContext();
   const source = audioCtx.createMediaStreamSource(stream);
   analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 256;
-  analyser.smoothingTimeConstant = 0.8;
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.85;
   source.connect(analyser);
   drawWaveform();
 }
@@ -310,39 +322,65 @@ function drawWaveform() {
   const h = canvas.clientHeight;
   const cx = w / 2;
   const cy = h / 2;
-  const baseRadius = Math.min(cx, cy) * 0.65;
+  const baseRadius = Math.min(cx, cy) * 0.62;
 
   ctx.clearRect(0, 0, w, h);
 
-  const data = new Uint8Array(analyser.frequencyBinCount);
-  analyser.getByteFrequencyData(data);
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freqData);
 
-  // Get current emotion color from CSS variable
+  // Calculate volume (RMS of frequency data)
+  let sum = 0;
+  for (let i = 0; i < freqData.length; i++) sum += freqData[i] * freqData[i];
+  currentVolume = Math.sqrt(sum / freqData.length) / 255;
+
   const color = getComputedStyle(document.documentElement)
-    .getPropertyValue('--emotion-color').trim() || '#666';
+    .getPropertyValue('--emotion-color').trim() || '#888';
 
-  const bars = 64;
-  const step = Math.floor(data.length / bars);
+  // Parse color for rgba
+  const r = parseInt(color.slice(1,3),16) || 128;
+  const g = parseInt(color.slice(3,5),16) || 128;
+  const b = parseInt(color.slice(5,7),16) || 128;
 
-  for (let i = 0; i < bars; i++) {
-    const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
-    const val = data[i * step] / 255;
-    const barLen = val * baseRadius * 0.4 + 2;
+  const points = 128;
+  const time = Date.now() / 1000;
 
-    const x1 = cx + Math.cos(angle) * (baseRadius + 4);
-    const y1 = cy + Math.sin(angle) * (baseRadius + 4);
-    const x2 = cx + Math.cos(angle) * (baseRadius + 4 + barLen);
-    const y2 = cy + Math.sin(angle) * (baseRadius + 4 + barLen);
+  // Draw smooth organic ring — two layers for depth
+  for (let layer = 0; layer < 2; layer++) {
+    const layerAlpha = layer === 0 ? 0.08 : 0.25;
+    const layerScale = layer === 0 ? 1.15 : 1.0;
 
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.3 + val * 0.5;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * Math.PI * 2;
+      const freqIdx = Math.floor((i / points) * freqData.length * 0.5);
+      const val = freqData[freqIdx] / 255;
+
+      // Organic displacement: frequency data + gentle sine wave drift
+      const drift = Math.sin(angle * 3 + time * 1.5) * 0.02
+                  + Math.sin(angle * 5 - time * 0.8) * 0.015;
+      const displacement = (val * 0.3 + drift) * baseRadius * layerScale;
+      const radius = baseRadius + displacement + 6;
+
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(${r},${g},${b},${layerAlpha + currentVolume * 0.3})`;
+    ctx.lineWidth = layer === 0 ? 1 : 1.5;
     ctx.stroke();
-    ctx.globalAlpha = 1;
+
+    // Fill with subtle gradient on inner layer
+    if (layer === 1 && currentVolume > 0.05) {
+      const grd = ctx.createRadialGradient(cx, cy, baseRadius, cx, cy, baseRadius + baseRadius * 0.4);
+      grd.addColorStop(0, 'transparent');
+      grd.addColorStop(1, `rgba(${r},${g},${b},${currentVolume * 0.06})`);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
   }
 }
 
@@ -351,6 +389,7 @@ function stopWaveform() {
   waveAnimId = null;
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
   analyser = null;
+  currentVolume = 0;
   const canvas = document.getElementById('waveform');
   if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
 }
