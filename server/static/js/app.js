@@ -49,11 +49,140 @@ function getEmotionColor(name) {
   return EMOTION_COLORS[(name || '').toLowerCase()] || DEFAULT_COLOR;
 }
 
+/* ---- Smoothing ---- */
+// Exponential moving average over the last few readings to reduce jitter
+const SMOOTH_ALPHA = 0.4; // 0 = no smoothing, 1 = no memory
+let smoothedScores = {}; // { emotionName: smoothedScore }
+
+function smoothEmotions(rawEmotions) {
+  const newSmoothed = {};
+
+  for (const e of rawEmotions) {
+    const prev = smoothedScores[e.name] || 0;
+    newSmoothed[e.name] = prev * (1 - SMOOTH_ALPHA) + e.score * SMOOTH_ALPHA;
+  }
+
+  // Decay emotions not in current reading
+  for (const [name, score] of Object.entries(smoothedScores)) {
+    if (!(name in newSmoothed)) {
+      const decayed = score * (1 - SMOOTH_ALPHA);
+      if (decayed > 0.01) newSmoothed[name] = decayed;
+    }
+  }
+
+  smoothedScores = newSmoothed;
+
+  return Object.entries(newSmoothed)
+    .map(([name, score]) => ({ name, score: Math.round(score * 10000) / 10000 }))
+    .sort((a, b) => b.score - a.score);
+}
+
+/* ---- Emotion Timeline ---- */
+const TIMELINE_MAX = 40; // data points (40 * 1.5s = 60s)
+const timeline = []; // [{ time, emotion, color, score }]
+
+function addTimelinePoint(emotion, score) {
+  const ec = getEmotionColor(emotion);
+  timeline.push({ time: Date.now(), emotion, color: ec.solid, score });
+  if (timeline.length > TIMELINE_MAX) timeline.shift();
+  drawTimeline();
+}
+
+function drawTimeline() {
+  const canvas = document.getElementById('timeline');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+
+  ctx.clearRect(0, 0, w, h);
+
+  if (timeline.length < 2) return;
+
+  const step = w / (TIMELINE_MAX - 1);
+  const offset = TIMELINE_MAX - timeline.length;
+
+  // Draw filled area
+  ctx.beginPath();
+  ctx.moveTo(offset * step, h);
+  for (let i = 0; i < timeline.length; i++) {
+    const x = (offset + i) * step;
+    const y = h - (timeline[i].score * h * 0.85) - h * 0.05;
+    if (i === 0) ctx.lineTo(x, y);
+    else {
+      const px = (offset + i - 1) * step;
+      const py = h - (timeline[i - 1].score * h * 0.85) - h * 0.05;
+      const cx = (px + x) / 2;
+      ctx.bezierCurveTo(cx, py, cx, y, x, y);
+    }
+  }
+  ctx.lineTo((offset + timeline.length - 1) * step, h);
+  ctx.closePath();
+
+  // Gradient fill using latest emotion color
+  const latest = timeline[timeline.length - 1];
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, latest.color + '30');
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Draw line
+  ctx.beginPath();
+  for (let i = 0; i < timeline.length; i++) {
+    const x = (offset + i) * step;
+    const y = h - (timeline[i].score * h * 0.85) - h * 0.05;
+    if (i === 0) ctx.moveTo(x, y);
+    else {
+      const px = (offset + i - 1) * step;
+      const py = h - (timeline[i - 1].score * h * 0.85) - h * 0.05;
+      const cx = (px + x) / 2;
+      ctx.bezierCurveTo(cx, py, cx, y, x, y);
+    }
+  }
+  ctx.strokeStyle = latest.color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Draw dots with emotion colors
+  for (let i = 0; i < timeline.length; i++) {
+    const x = (offset + i) * step;
+    const y = h - (timeline[i].score * h * 0.85) - h * 0.05;
+    ctx.beginPath();
+    ctx.arc(x, y, i === timeline.length - 1 ? 4 : 2, 0, Math.PI * 2);
+    ctx.fillStyle = timeline[i].color;
+    ctx.fill();
+  }
+
+  // Latest dot glow
+  if (timeline.length > 0) {
+    const last = timeline.length - 1;
+    const x = (offset + last) * step;
+    const y = h - (timeline[last].score * h * 0.85) - h * 0.05;
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = timeline[last].color + '40';
+    ctx.fill();
+  }
+}
+
+window.addEventListener('resize', drawTimeline);
+
 /* ---- Orb + UI Update ---- */
 let prevEmotion = '';
 
 function updateEmotion(emotion, topEmotions) {
-  const ec = getEmotionColor(emotion);
+  // Apply smoothing
+  const smoothed = smoothEmotions(topEmotions);
+  const top = smoothed[0];
+  const displayEmotion = top.name;
+  const ec = getEmotionColor(displayEmotion);
   const root = document.documentElement;
 
   // Update CSS variables
@@ -70,45 +199,45 @@ function updateEmotion(emotion, topEmotions) {
 
   // Emotion label with crossfade
   const labelEl = document.getElementById('emotion-label');
-  if (emotion !== prevEmotion) {
+  if (displayEmotion !== prevEmotion) {
     labelEl.classList.add('changing');
     setTimeout(() => {
-      labelEl.textContent = emotion;
+      labelEl.textContent = displayEmotion;
       labelEl.style.color = ec.solid;
       setTimeout(() => labelEl.classList.remove('changing'), 250);
     }, 200);
-    prevEmotion = emotion;
+    prevEmotion = displayEmotion;
   }
 
   // Subtitle
   const subEl = document.getElementById('emotion-sub');
-  if (topEmotions && topEmotions.length > 0) {
-    const pct = Math.round(topEmotions[0].score * 100);
-    subEl.textContent = `${pct}% confidence`;
-    subEl.style.color = ec.solid;
-  }
+  const pct = Math.round(top.score * 100);
+  subEl.textContent = `${pct}% confidence`;
+  subEl.style.color = ec.solid;
 
-  // Bars
+  // Bars (show smoothed top 3)
   const barsContainer = document.getElementById('emotion-bars');
   barsContainer.classList.add('visible');
 
-  if (topEmotions) {
-    for (let i = 0; i < 3; i++) {
-      const e = topEmotions[i];
-      if (e) {
-        const pct = Math.round(e.score * 100);
-        const barEc = getEmotionColor(e.name);
-        document.getElementById(`bar-name-${i}`).textContent = e.name;
-        document.getElementById(`bar-fill-${i}`).style.width = pct + '%';
-        document.getElementById(`bar-fill-${i}`).style.background = barEc.solid;
-        document.getElementById(`bar-pct-${i}`).textContent = pct + '%';
-      } else {
-        document.getElementById(`bar-name-${i}`).textContent = '--';
-        document.getElementById(`bar-fill-${i}`).style.width = '0%';
-        document.getElementById(`bar-pct-${i}`).textContent = '0%';
-      }
+  const top3 = smoothed.slice(0, 3);
+  for (let i = 0; i < 3; i++) {
+    const e = top3[i];
+    if (e && e.score > 0.005) {
+      const p = Math.round(e.score * 100);
+      const barEc = getEmotionColor(e.name);
+      document.getElementById(`bar-name-${i}`).textContent = e.name;
+      document.getElementById(`bar-fill-${i}`).style.width = p + '%';
+      document.getElementById(`bar-fill-${i}`).style.background = barEc.solid;
+      document.getElementById(`bar-pct-${i}`).textContent = p + '%';
+    } else {
+      document.getElementById(`bar-name-${i}`).textContent = '--';
+      document.getElementById(`bar-fill-${i}`).style.width = '0%';
+      document.getElementById(`bar-pct-${i}`).textContent = '0%';
     }
   }
+
+  // Timeline
+  addTimelinePoint(displayEmotion, top.score);
 }
 
 function showStatus(text) {
@@ -124,7 +253,7 @@ let mediaRecorder = null;
 let voiceWs = null;
 let isStreaming = false;
 
-const CHUNK_DURATION = 2000;
+const CHUNK_DURATION = 1500; // 1.5 seconds for faster updates
 const RECONNECT_DELAY = 3000;
 
 async function startStreaming() {
@@ -135,7 +264,6 @@ async function startStreaming() {
       audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
       showStatus('Mic access denied');
-      // Retry — user may grant permission later
       setTimeout(startStreaming, RECONNECT_DELAY);
       return;
     }
@@ -154,7 +282,6 @@ async function startStreaming() {
     const data = JSON.parse(event.data);
     if (data.type === 'emotion') {
       updateEmotion(data.emotion, data.top_emotions);
-      showTranscript(data.transcript || '');
     } else if (data.type === 'error') {
       showStatus(data.message || 'Error');
     }
@@ -167,9 +294,7 @@ async function startStreaming() {
     setTimeout(startStreaming, RECONNECT_DELAY);
   };
 
-  voiceWs.onerror = () => {
-    // onclose will fire and handle reconnect
-  };
+  voiceWs.onerror = () => {};
 }
 
 function startChunkedRecording() {
@@ -211,16 +336,6 @@ function startChunkedRecording() {
   }
 
   recordChunk();
-}
-
-function showTranscript(text) {
-  const el = document.getElementById('transcript');
-  if (text) {
-    el.textContent = '\u201C' + text + '\u201D';
-    el.classList.add('active');
-  } else {
-    el.classList.remove('active');
-  }
 }
 
 /* ---- Auto-Start ---- */
