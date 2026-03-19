@@ -166,33 +166,49 @@ async def voice_stream(websocket: WebSocket):
     await websocket.accept()
     logger.info("Voice stream accepted")
 
-    try:
-        async with hume_client.expression_measurement.stream.connect() as hume_socket:
+    import base64
+    import tempfile
+
+    hume_socket = None
+
+    async def ensure_hume():
+        nonlocal hume_socket
+        if hume_socket is None:
+            ctx = hume_client.expression_measurement.stream.connect()
+            hume_socket = await ctx.__aenter__()
             logger.info("Connected to Hume streaming API")
+        return hume_socket
 
-            try:
-                while True:
-                    data = await websocket.receive_text()
-                    msg = json.loads(data)
+    try:
+        await ensure_hume()
 
-                    if msg.get("type") == "audio":
-                        import base64
-                        import tempfile
-                        audio_bytes = base64.b64decode(msg["data"])
-                        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
-                            tmp.write(audio_bytes)
-                            tmp_path = tmp.name
+        try:
+            while True:
+                data = await websocket.receive_text()
+                msg = json.loads(data)
 
+                if msg.get("type") == "audio":
+                    audio_bytes = base64.b64decode(msg["data"])
+                    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+                        tmp.write(audio_bytes)
+                        tmp_path = tmp.name
+
+                    try:
                         try:
-                            result = await hume_socket.send_file(
+                            hs = await ensure_hume()
+                            result = await hs.send_file(
                                 file_=tmp_path,
                                 config=Config(prosody={}, burst={}),
                             )
+                        except Exception as send_err:
+                            logger.warning("Hume send failed, reconnecting: %s", send_err)
+                            hume_socket = None
+                            continue
 
-                            # Check for error response
-                            if hasattr(result, "error") and result.error:
-                                logger.warning("Hume error: %s", result.error)
-                                continue
+                        # Check for error response
+                        if hasattr(result, "error") and result.error:
+                            logger.warning("Hume error: %s", result.error)
+                            continue
 
                             # Helper to extract emotions from a model result
                             def _extract(model_result):
