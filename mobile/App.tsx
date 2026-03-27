@@ -1,13 +1,19 @@
 import { StatusBar } from "expo-status-bar";
-import { SafeAreaView, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+} from "react-native-safe-area-context";
 import DashboardScreen from "./src/screens/DashboardScreen";
 
 export default function App() {
   return (
-    <SafeAreaView style={styles.container}>
-      <DashboardScreen />
-      <StatusBar style="light" />
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container}>
+        <DashboardScreen />
+        <StatusBar style="light" />
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
