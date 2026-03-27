@@ -55,30 +55,6 @@ body {
   color: #555;
 }
 
-.header-status { display: flex; align-items: center; gap: 8px; }
-
-.conn-indicator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.65rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.conn-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: #333;
-  transition: all 0.6s;
-}
-
-.conn-dot.connected {
-  background: var(--green);
-  box-shadow: 0 0 8px rgba(90, 154, 106, 0.6);
-}
-
 /* ---- Main Layout ---- */
 .main {
   flex: 1;
@@ -108,15 +84,6 @@ body {
   position: relative;
   width: 180px;
   height: 180px;
-}
-
-.waveform-canvas {
-  position: absolute;
-  inset: -40px;
-  width: calc(100% + 80px);
-  height: calc(100% + 80px);
-  pointer-events: none;
-  z-index: 1;
 }
 
 .orb-glow {

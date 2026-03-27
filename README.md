@@ -2,7 +2,7 @@
 
 A wearable comfort device that senses your emotional state and responds with gentle servo movement.
 
-Sensors (motion, temperature, touch, voice) feed into a Python server that uses GPT-4 to infer emotion and output a servo speed — fast for agitation, slow for calm.
+Sensors (motion, temperature, touch) feed into a Python server that uses GPT-4 to infer emotion and output a servo speed — fast for agitation, slow for calm.
 
 ## Architecture
 
@@ -16,11 +16,9 @@ SENSOR ARDUINO ──WebSocket──> SERVER (Python) ──WebSocket──> MOT
 1. **Arduino** (`firmware/sketch/sketch.ino`) reads gyroscope (ICM20600), temperature (MAX31875), and touch button every 500ms
 2. **Bridge** (`firmware/bridge/sender.py`) forwards sensor packets to the server via WebSocket
 3. **Server** (`server/server.py`) receives packets and passes them to signal processing
-4. **Signal processor** (`server/signal_processor.py`) buffers readings (10 speed samples, 25 temp samples), characterizes each as a magnitude + pattern (`constant` / `increasing` / `decreasing` / `variable`), and only writes `data/input_data.json` when the pattern or magnitude actually changes (>20% shift). Touch and voice bypass buffering and trigger immediately.
+4. **Signal processor** (`server/signal_processor.py`) buffers readings (10 speed samples, 25 temp samples), characterizes each as a magnitude + pattern (`constant` / `increasing` / `decreasing` / `variable`), and only writes `data/input_data.json` when the pattern or magnitude actually changes (>20% shift). Touch bypasses buffering and triggers immediately.
 5. **Emotion inference** (`server/emotion_inference.py`) is called directly by the server with parsed sensor data, prompts GPT-4.1-mini, and returns an emotion label and a microseconds value (500 = fast/intense, 2500 = slow/gentle)
 6. **Server** sends the result to the receiver Arduino, which drives the servo
-
-**Voice input:** A web page (`server/static/index.html`) at `http://localhost:8000` lets you record audio. The server transcribes it with Whisper, classifies sentiment (happy/sad/mad/love/anxious/neutral), and feeds it into the pipeline.
 
 ## Project Structure
 
@@ -72,7 +70,7 @@ python -m uvicorn server:app --reload --host 0.0.0.0 --port 8000
 cd firmware/bridge && python sender.py
 ```
 
-Flash `firmware/sketch/sketch.ino` to your Arduino (arduino:zephyr platform, libraries in `sketch.yaml`). Open `http://localhost:8000` for voice input.
+Flash `firmware/sketch/sketch.ino` to your Arduino (arduino:zephyr platform, libraries in `sketch.yaml`). Open `http://localhost:8000` for the dashboard.
 
 ## Deploy Frontend to Vercel
 
