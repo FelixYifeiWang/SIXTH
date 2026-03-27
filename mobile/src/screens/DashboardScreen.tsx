@@ -1,16 +1,31 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, ScrollView, StyleSheet, Text, View } from "react-native";
 import MetricCard from "../components/MetricCard";
 import SectionHeader from "../components/SectionHeader";
 import { metrics } from "../data/mockData";
 
+function formatNow(): string {
+  const now = new Date();
+  const month = now.toLocaleString("en-US", { month: "short" });
+  const day = now.getDate();
+  const year = now.getFullYear();
+  const time = now.toLocaleString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return `Live Readings · ${month} ${day}, ${year} · ${time}`;
+}
+
 export default function DashboardScreen() {
   const environment = metrics.filter((m) => m.section === "environment");
   const body = metrics.filter((m) => m.section === "body");
+  const [subtitle, setSubtitle] = useState(formatNow);
 
   const headerOpacity = useRef(new Animated.Value(0)).current;
   const headerTranslateY = useRef(new Animated.Value(-12)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const interval = setInterval(() => setSubtitle(formatNow()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     Animated.parallel([
@@ -69,7 +84,7 @@ export default function DashboardScreen() {
         }}
       >
         <Text style={styles.title}>ConnectQ</Text>
-        <Text style={styles.subtitle}>Live Readings · Mar 27, 2026 · 4:32 PM</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
       </Animated.View>
 
       <SectionHeader title="Environment" delay={envSectionDelay} />
