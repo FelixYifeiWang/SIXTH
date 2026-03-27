@@ -1,15 +1,47 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, StyleSheet } from "react-native";
 
 type Props = {
   title: string;
+  delay?: number;
 };
 
-export default function SectionHeader({ title }: Props) {
+export default function SectionHeader({ title, delay = 0 }: Props) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const lineScaleX = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(lineScaleX, {
+          toValue: 1,
+          duration: 350,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [fadeAnim, lineScaleX, delay]);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>{title}</Text>
-      <View style={styles.line} />
-    </View>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <Animated.Text style={styles.label}>{title}</Animated.Text>
+      <Animated.View
+        style={[
+          styles.line,
+          {
+            transform: [{ scaleX: lineScaleX }],
+          },
+        ]}
+      />
+    </Animated.View>
   );
 }
 
