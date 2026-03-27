@@ -9,21 +9,21 @@ export default function DashboardScreen() {
   const body = metrics.filter((m) => m.section === "body");
 
   const headerOpacity = useRef(new Animated.Value(0)).current;
-  const headerTranslateY = useRef(new Animated.Value(-20)).current;
+  const headerTranslateY = useRef(new Animated.Value(-12)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(headerOpacity, {
         toValue: 1,
-        duration: 600,
-        easing: Easing.out(Easing.ease),
+        duration: 450,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(headerTranslateY, {
         toValue: 0,
-        duration: 600,
-        easing: Easing.out(Easing.ease),
+        duration: 450,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start();
@@ -31,12 +31,12 @@ export default function DashboardScreen() {
 
   // Scroll-driven header parallax: fade + shift as user scrolls
   const scrollFadeOpacity = scrollY.interpolate({
-    inputRange: [0, 120],
+    inputRange: [0, 160],
     outputRange: [1, 0.4],
     extrapolate: "clamp",
   });
   const scrollTranslateY = scrollY.interpolate({
-    inputRange: [0, 120],
+    inputRange: [0, 160],
     outputRange: [0, -8],
     extrapolate: "clamp",
   });
@@ -44,10 +44,10 @@ export default function DashboardScreen() {
   // Combine entrance + scroll animations
   const combinedHeaderOpacity = Animated.multiply(headerOpacity, scrollFadeOpacity);
 
-  const envSectionDelay = 300;
-  const envCardBaseDelay = 400;
-  const bodySectionDelay = envCardBaseDelay + environment.length * 100 + 200;
-  const bodyCardBaseDelay = bodySectionDelay + 100;
+  const envSectionDelay = 200;
+  const envCardBaseDelay = 280;
+  const bodySectionDelay = envCardBaseDelay + environment.length * 80 + 120;
+  const bodyCardBaseDelay = bodySectionDelay + 80;
 
   return (
     <ScrollView
@@ -75,14 +75,14 @@ export default function DashboardScreen() {
       <SectionHeader title="Environment" delay={envSectionDelay} />
       <View style={styles.grid}>
         {environment.map((m, i) => (
-          <MetricCard key={m.id} metric={m} delay={envCardBaseDelay + i * 100} />
+          <MetricCard key={m.id} metric={m} delay={envCardBaseDelay + i * 80} />
         ))}
       </View>
 
       <SectionHeader title="Body" delay={bodySectionDelay} />
       <View style={styles.grid}>
         {body.map((m, i) => (
-          <MetricCard key={m.id} metric={m} delay={bodyCardBaseDelay + i * 100} />
+          <MetricCard key={m.id} metric={m} delay={bodyCardBaseDelay + i * 80} />
         ))}
       </View>
 
