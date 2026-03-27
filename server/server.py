@@ -40,6 +40,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 
 app = FastAPI()
 

@@ -25,6 +25,8 @@ function Sparkline({
   active: boolean;
   entranceDelay: number;
 }) {
+  if (data.length === 0) return null;
+
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
@@ -34,7 +36,7 @@ function Sparkline({
 
   // Ambient pulse
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 0.7,
@@ -49,7 +51,9 @@ function Sparkline({
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, [pulseAnim]);
 
   // Staggered bar entrance: grow in after card appears
@@ -134,7 +138,7 @@ const sparkStyles = StyleSheet.create({
 
 export default function MetricCard({ metric, delay = 0 }: Props) {
   const lastTwo = metric.trend.slice(-2);
-  const trending = lastTwo[1] >= lastTwo[0] ? "↑" : "↓";
+  const trending = lastTwo.length < 2 ? "—" : lastTwo[1] >= lastTwo[0] ? "↑" : "↓";
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;

@@ -3,7 +3,7 @@ import websockets
 import json
 from datetime import datetime
 
-SERVER_URI = "ws://10.29.154.85:8000/ws"
+SERVER_URI = "ws://10.29.154.85:8000/ws?name=receiver"
 RECONNECT_DELAY = 5  # seconds
 
 async def listen():

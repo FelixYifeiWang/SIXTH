@@ -7,7 +7,7 @@ import websockets
 from arduino.app_utils import App, Bridge
 
 DEVICE_NAME = "giver"
-SERVER_URI = "wss://tona-citizenly-wrinkledly.ngrok-free.dev/ws"
+SERVER_URI = "wss://tona-citizenly-wrinkledly.ngrok-free.dev/ws?name=giver"
 RECONNECT_DELAY = 5
 
 # thread-safe queue for packets coming from the MCU
