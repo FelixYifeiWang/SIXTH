@@ -25,7 +25,15 @@ SENSOR ARDUINO ──WebSocket──> SERVER (Python) ──WebSocket──> MOT
 ```
 ConnectQ/
 ├── mobile/                            # React Native Expo app
-│   ├── App.tsx                        # Root component — blank starter screen
+│   ├── App.tsx                        # Root component — renders dashboard
+│   ├── src/
+│   │   ├── screens/
+│   │   │   └── DashboardScreen.tsx    # Main dashboard — metric cards in 2-col grid
+│   │   ├── components/
+│   │   │   ├── MetricCard.tsx         # Single metric card with sparkline
+│   │   │   └── SectionHeader.tsx      # Section divider label
+│   │   └── data/
+│   │       └── mockData.ts           # Static mock metric values
 │   ├── app.json                       # Expo config
 │   ├── package.json                   # Dependencies
 │   ├── tsconfig.json                  # TypeScript config

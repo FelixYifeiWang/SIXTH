@@ -1,25 +1,19 @@
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, StyleSheet } from "react-native";
+import DashboardScreen from "./src/screens/DashboardScreen";
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>ConnectQ</Text>
+    <SafeAreaView style={styles.container}>
+      <DashboardScreen />
       <StatusBar style="light" />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0a0a0a",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    color: "#ffffff",
-    fontSize: 32,
-    fontWeight: "600",
+    backgroundColor: "#0A0A0A",
   },
 });
