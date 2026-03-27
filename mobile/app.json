@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "ConnectQ",
+    "slug": "connectq",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "connectq",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a"
+      }
+    }
+  }
+}
