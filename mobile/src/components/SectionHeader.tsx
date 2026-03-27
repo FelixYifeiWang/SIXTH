@@ -16,14 +16,14 @@ export default function SectionHeader({ title, delay = 0 }: Props) {
       Animated.sequence([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 400,
-          easing: Easing.out(Easing.ease),
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(lineScaleX, {
           toValue: 1,
-          duration: 350,
-          easing: Easing.out(Easing.ease),
+          duration: 280,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]).start();
@@ -36,15 +36,15 @@ export default function SectionHeader({ title, delay = 0 }: Props) {
     Animated.parallel([
       Animated.sequence([
         Animated.timing(lineScaleX, {
-          toValue: 0.5,
-          duration: 150,
-          easing: Easing.out(Easing.ease),
+          toValue: 0.3,
+          duration: 100,
+          easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.spring(lineScaleX, {
           toValue: 1,
-          friction: 5,
-          tension: 140,
+          friction: 4,
+          tension: 180,
           useNativeDriver: true,
         }),
       ]),
@@ -52,14 +52,14 @@ export default function SectionHeader({ title, delay = 0 }: Props) {
       Animated.sequence([
         Animated.timing(labelOpacity, {
           toValue: 1.6,
-          duration: 120,
-          easing: Easing.out(Easing.ease),
+          duration: 80,
+          easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(labelOpacity, {
           toValue: 1,
-          duration: 280,
-          easing: Easing.out(Easing.ease),
+          duration: 200,
+          easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),

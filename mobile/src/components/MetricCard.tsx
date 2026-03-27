@@ -18,53 +18,75 @@ function Sparkline({
   data,
   color,
   active,
+  entranceDelay,
 }: {
   data: number[];
   color: string;
   active: boolean;
+  entranceDelay: number;
 }) {
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const barScales = useRef(data.map(() => new Animated.Value(1))).current;
+  const barScales = useRef(data.map(() => new Animated.Value(0))).current;
 
+  // Ambient pulse
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 0.7,
           duration: 1500,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
           duration: 1500,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
       ])
     ).start();
   }, [pulseAnim]);
 
+  // Staggered bar entrance: grow in after card appears
   useEffect(() => {
-    if (active) {
-      // Staggered wave: shrink then grow each bar left-to-right
+    const timer = setTimeout(() => {
       const animations = barScales.map((scale, i) =>
         Animated.sequence([
-          Animated.delay(i * 40),
+          Animated.delay(i * 25),
+          Animated.spring(scale, {
+            toValue: 1,
+            friction: 4,
+            tension: 140,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      Animated.parallel(animations).start();
+    }, entranceDelay + 200);
+    return () => clearTimeout(timer);
+  }, [barScales, entranceDelay]);
+
+  // Press-triggered wave
+  useEffect(() => {
+    if (active) {
+      const animations = barScales.map((scale, i) =>
+        Animated.sequence([
+          Animated.delay(i * 30),
           Animated.timing(scale, {
-            toValue: 0.2,
+            toValue: 0.1,
             duration: 100,
-            easing: Easing.out(Easing.ease),
+            easing: Easing.out(Easing.quad),
             useNativeDriver: true,
           }),
           Animated.spring(scale, {
             toValue: 1,
-            friction: 4,
-            tension: 160,
+            friction: 3,
+            tension: 200,
             useNativeDriver: true,
           }),
         ])
@@ -115,77 +137,124 @@ export default function MetricCard({ metric, delay = 0 }: Props) {
   const trending = lastTwo[1] >= lastTwo[0] ? "↑" : "↓";
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(30)).current;
+  const translateY = useRef(new Animated.Value(18)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   // Press interaction values
   const pressScale = useRef(new Animated.Value(1)).current;
+  const pressRotate = useRef(new Animated.Value(0)).current;
   const glowOpacity = useRef(new Animated.Value(0)).current;
   const [sparkActive, setSparkActive] = useState(false);
+
+  // Value counter animation
+  const counterAnim = useRef(new Animated.Value(0)).current;
+  const [displayValue, setDisplayValue] = useState(0);
+  const isDecimal = !Number.isInteger(metric.value);
+  const decimals = isDecimal ? (String(metric.value).split(".")[1]?.length ?? 1) : 0;
 
   useEffect(() => {
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 500,
-          easing: Easing.out(Easing.ease),
+          duration: 380,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(translateY, {
           toValue: 0,
-          duration: 500,
-          easing: Easing.out(Easing.ease),
+          duration: 380,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnim, {
           toValue: 1,
-          duration: 500,
-          easing: Easing.out(Easing.ease),
+          duration: 380,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => {
+        // Start counter after entrance completes
+        Animated.timing(counterAnim, {
+          toValue: 1,
+          duration: 400,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }).start();
+      });
     }, delay);
     return () => clearTimeout(timer);
-  }, [fadeAnim, translateY, scaleAnim, delay]);
+  }, [fadeAnim, translateY, scaleAnim, counterAnim, delay]);
+
+  useEffect(() => {
+    const id = counterAnim.addListener(({ value }) => {
+      const current = value * metric.value;
+      setDisplayValue(current);
+    });
+    return () => counterAnim.removeListener(id);
+  }, [counterAnim, metric.value]);
+
+  const formattedValue =
+    displayValue >= metric.value
+      ? String(metric.value)
+      : isDecimal
+        ? displayValue.toFixed(decimals)
+        : String(Math.round(displayValue));
 
   const combinedScale = Animated.multiply(scaleAnim, pressScale);
+
+  const rotateInterpolation = pressRotate.interpolate({
+    inputRange: [-1, 0, 1],
+    outputRange: ["-1.5deg", "0deg", "1.5deg"],
+  });
 
   const handlePressIn = useCallback(() => {
     setSparkActive(true);
     Animated.parallel([
       Animated.timing(pressScale, {
         toValue: 0.96,
-        duration: 150,
-        easing: Easing.out(Easing.ease),
+        duration: 100,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(pressRotate, {
+        toValue: 1,
+        duration: 100,
+        easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }),
       Animated.timing(glowOpacity, {
         toValue: 1,
-        duration: 150,
-        easing: Easing.out(Easing.ease),
+        duration: 100,
+        easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }),
     ]).start();
-  }, [pressScale, glowOpacity]);
+  }, [pressScale, pressRotate, glowOpacity]);
 
   const handlePressOut = useCallback(() => {
     setSparkActive(false);
     Animated.parallel([
       Animated.spring(pressScale, {
         toValue: 1,
-        friction: 6,
-        tension: 180,
+        friction: 5,
+        tension: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(pressRotate, {
+        toValue: 0,
+        friction: 5,
+        tension: 200,
         useNativeDriver: true,
       }),
       Animated.timing(glowOpacity, {
         toValue: 0,
-        duration: 300,
-        easing: Easing.out(Easing.ease),
+        duration: 200,
+        easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start();
-  }, [pressScale, glowOpacity]);
+  }, [pressScale, pressRotate, glowOpacity]);
 
   return (
     <Animated.View
@@ -193,7 +262,11 @@ export default function MetricCard({ metric, delay = 0 }: Props) {
         styles.card,
         {
           opacity: fadeAnim,
-          transform: [{ translateY }, { scale: combinedScale }],
+          transform: [
+            { translateY },
+            { scale: combinedScale },
+            { rotate: rotateInterpolation },
+          ],
         },
       ]}
     >
@@ -223,7 +296,7 @@ export default function MetricCard({ metric, delay = 0 }: Props) {
         </View>
 
         <View style={styles.valueRow}>
-          <Text style={styles.value}>{metric.value}</Text>
+          <Text style={styles.value}>{formattedValue}</Text>
           <Text style={styles.unit}>{metric.unit}</Text>
         </View>
 
@@ -231,6 +304,7 @@ export default function MetricCard({ metric, delay = 0 }: Props) {
           data={metric.trend}
           color={metric.accentColor}
           active={sparkActive}
+          entranceDelay={delay}
         />
       </Pressable>
     </Animated.View>
