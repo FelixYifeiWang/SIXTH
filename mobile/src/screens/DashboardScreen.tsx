@@ -10,6 +10,7 @@ export default function DashboardScreen() {
 
   const headerOpacity = useRef(new Animated.Value(0)).current;
   const headerTranslateY = useRef(new Animated.Value(-20)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -28,6 +29,21 @@ export default function DashboardScreen() {
     ]).start();
   }, [headerOpacity, headerTranslateY]);
 
+  // Scroll-driven header parallax: fade + shift as user scrolls
+  const scrollFadeOpacity = scrollY.interpolate({
+    inputRange: [0, 120],
+    outputRange: [1, 0.4],
+    extrapolate: "clamp",
+  });
+  const scrollTranslateY = scrollY.interpolate({
+    inputRange: [0, 120],
+    outputRange: [0, -8],
+    extrapolate: "clamp",
+  });
+
+  // Combine entrance + scroll animations
+  const combinedHeaderOpacity = Animated.multiply(headerOpacity, scrollFadeOpacity);
+
   const envSectionDelay = 300;
   const envCardBaseDelay = 400;
   const bodySectionDelay = envCardBaseDelay + environment.length * 100 + 200;
@@ -38,11 +54,18 @@ export default function DashboardScreen() {
       style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onScroll={Animated.event(
+        [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+        { useNativeDriver: true }
+      )}
     >
       <Animated.View
         style={{
-          opacity: headerOpacity,
-          transform: [{ translateY: headerTranslateY }],
+          opacity: combinedHeaderOpacity,
+          transform: [
+            { translateY: Animated.add(headerTranslateY, scrollTranslateY) },
+          ],
         }}
       >
         <Text style={styles.title}>ConnectQ</Text>
@@ -75,7 +98,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 24,
   },
   title: {
     color: "#FFFFFF",
@@ -87,6 +110,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "400",
     marginTop: 4,
+    marginBottom: 8,
   },
   grid: {
     flexDirection: "row",
@@ -94,6 +118,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   spacer: {
-    height: 40,
+    height: 60,
   },
 });
