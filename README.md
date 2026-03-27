@@ -55,6 +55,20 @@ ConnectQ/
 ## Setup
 
 ```bash
+# 1. Start the frontend
+cd web
+python3 -m http.server 8000
+
+# 2. Open http://localhost:8000
+```
+
+The frontend runs standalone with mock demo data — no backend or API key required.
+
+## Backend (optional)
+
+To connect real sensors and GPT-4 emotion inference, start the backend in a separate terminal:
+
+```bash
 # 1. Install dependencies
 cd server
 python -m venv venv && source venv/bin/activate
@@ -70,7 +84,7 @@ python -m uvicorn server:app --reload --host 0.0.0.0 --port 8000
 cd firmware/bridge && python sender.py
 ```
 
-Flash `firmware/sketch/sketch.ino` to your Arduino (arduino:zephyr platform, libraries in `sketch.yaml`). Open `http://localhost:8000` for the dashboard.
+Flash `firmware/sketch/sketch.ino` to your Arduino (arduino:zephyr platform, libraries in `sketch.yaml`).
 
 ## Deploy Frontend to Vercel
 
