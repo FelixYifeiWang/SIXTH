@@ -1,8 +1,10 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import type { Metric } from "../data/mockData";
 
 type Props = {
   metric: Metric;
+  delay?: number;
 };
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -10,8 +12,29 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data);
   const range = max - min || 1;
 
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.7,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [pulseAnim]);
+
   return (
-    <View style={sparkStyles.container}>
+    <Animated.View style={[sparkStyles.container, { opacity: pulseAnim }]}>
       {data.map((val, i) => {
         const normalized = (val - min) / range;
         const height = 4 + normalized * 20;
@@ -29,7 +52,7 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
           />
         );
       })}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -46,12 +69,50 @@ const sparkStyles = StyleSheet.create({
   },
 });
 
-export default function MetricCard({ metric }: Props) {
+export default function MetricCard({ metric, delay = 0 }: Props) {
   const lastTwo = metric.trend.slice(-2);
   const trending = lastTwo[1] >= lastTwo[0] ? "↑" : "↓";
 
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [fadeAnim, translateY, scaleAnim, delay]);
+
   return (
-    <View style={styles.card}>
+    <Animated.View
+      style={[
+        styles.card,
+        {
+          opacity: fadeAnim,
+          transform: [{ translateY }, { scale: scaleAnim }],
+        },
+      ]}
+    >
       <View style={styles.topRow}>
         <Text style={styles.icon}>{metric.icon}</Text>
         <Text style={styles.label}>{metric.label}</Text>
@@ -66,7 +127,7 @@ export default function MetricCard({ metric }: Props) {
       </View>
 
       <Sparkline data={metric.trend} color={metric.accentColor} />
-    </View>
+    </Animated.View>
   );
 }
 
