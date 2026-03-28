@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import MetricCard from "../components/MetricCard";
 import SectionHeader from "../components/SectionHeader";
 import { metrics } from "../data/mockData";
@@ -65,7 +65,7 @@ export default function DashboardScreen() {
   const bodyCardBaseDelay = bodySectionDelay + 80;
 
   return (
-    <ScrollView
+    <Animated.ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -102,7 +102,7 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.spacer} />
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 
