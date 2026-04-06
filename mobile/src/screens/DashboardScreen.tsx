@@ -1,72 +1,172 @@
-import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import AlertCard from "../components/AlertCard";
+import ExpeditionHero from "../components/ExpeditionHero";
 import MetricCard from "../components/MetricCard";
 import SectionHeader from "../components/SectionHeader";
-import { metrics } from "../data/mockData";
+import {
+  dailyAlerts,
+  expedition,
+  extremeAlerts,
+  metrics,
+  type AppMode,
+  type Metric,
+} from "../data/mockData";
 
-function formatNow(): string {
-  const now = new Date();
-  const month = now.toLocaleString("en-US", { month: "short" });
-  const day = now.getDate();
-  const year = now.getFullYear();
-  const time = now.toLocaleString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-  return `Live Readings · ${month} ${day}, ${year} · ${time}`;
+function formatTime(): string {
+  return new Date().toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
-export default function DashboardScreen() {
-  const environment = metrics.filter((m) => m.section === "environment");
-  const body = metrics.filter((m) => m.section === "body");
-  const [subtitle, setSubtitle] = useState(formatNow);
+type SectionDef = { key: string; title: string; items: Metric[] };
 
+function buildSections(mode: AppMode): SectionDef[] {
+  const filtered = metrics.filter((m) => m.modes.includes(mode));
+  const groups: Record<string, { title: string; items: Metric[] }> = {};
+  const titles: Record<string, string> = {
+    vitals: "Vitals",
+    body: "Temp",
+    environment: "Environment",
+    motion: "Motion",
+  };
+  const order = ["vitals", "body", "environment", "motion"];
+  for (const m of filtered) {
+    if (!groups[m.section]) groups[m.section] = { title: titles[m.section], items: [] };
+    groups[m.section].items.push(m);
+  }
+  return order.filter((k) => groups[k]?.items.length).map((k) => ({ key: k, ...groups[k] }));
+}
+
+const theme = {
+  extreme: {
+    bg: "#0C0A09",
+    accent: "#FBBF24",
+    thumbBg: "rgba(251,191,36,0.12)",
+    thumbBorder: "rgba(251,191,36,0.25)",
+    titleColor: "#FAFAF9",
+    timeColor: "#78716C",
+  },
+  daily: {
+    bg: "#030712",
+    accent: "#5B8DEF",
+    thumbBg: "rgba(91,141,239,0.10)",
+    thumbBorder: "rgba(91,141,239,0.22)",
+    titleColor: "#E5E7EB",
+    timeColor: "#6B7280",
+  },
+};
+
+export default function DashboardScreen() {
+  const [mode, setMode] = useState<AppMode>("daily");
+  const [transitioning, setTransitioning] = useState(false);
+  const [time, setTime] = useState(formatTime);
   const headerOpacity = useRef(new Animated.Value(0)).current;
-  const headerTranslateY = useRef(new Animated.Value(-12)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
+  const toggleSlide = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(1)).current;
+  const loadingOpacity = useRef(new Animated.Value(0)).current;
+  const loadingDotAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const interval = setInterval(() => setSubtitle(formatNow()), 60_000);
+    const interval = setInterval(() => setTime(formatTime()), 60_000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(headerOpacity, {
-        toValue: 1,
-        duration: 450,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(headerTranslateY, {
-        toValue: 0,
-        duration: 450,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [headerOpacity, headerTranslateY]);
+    Animated.timing(headerOpacity, {
+      toValue: 1, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start();
+  }, [headerOpacity]);
 
-  // Scroll-driven header parallax: fade + shift as user scrolls
-  const scrollFadeOpacity = scrollY.interpolate({
-    inputRange: [0, 160],
-    outputRange: [1, 0.4],
-    extrapolate: "clamp",
-  });
-  const scrollTranslateY = scrollY.interpolate({
-    inputRange: [0, 160],
-    outputRange: [0, -8],
-    extrapolate: "clamp",
-  });
+  const handleMode = useCallback((newMode: AppMode) => {
+    if (newMode === mode || transitioning) return;
 
-  // Combine entrance + scroll animations
-  const combinedHeaderOpacity = Animated.multiply(headerOpacity, scrollFadeOpacity);
+    // Slide the toggle thumb immediately
+    Animated.spring(toggleSlide, {
+      toValue: newMode === "extreme" ? 1 : 0,
+      friction: 8, tension: 120, useNativeDriver: false,
+    }).start();
 
-  const envSectionDelay = 200;
-  const envCardBaseDelay = 280;
-  const bodySectionDelay = envCardBaseDelay + environment.length * 80 + 120;
-  const bodyCardBaseDelay = bodySectionDelay + 80;
+    if (newMode === "extreme") {
+      // Slow transition: daily → extreme
+      setTransitioning(true);
+
+      const dotLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(loadingDotAnim, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(loadingDotAnim, { toValue: 0.3, duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ])
+      );
+
+      // Fade out content + fade in loading simultaneously
+      dotLoop.start();
+      Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 0, duration: 350, easing: Easing.in(Easing.cubic), useNativeDriver: true,
+        }),
+        Animated.timing(loadingOpacity, {
+          toValue: 1, duration: 350, useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setMode(newMode);
+      });
+
+      // After hold, crossfade loading out + content in
+      setTimeout(() => {
+        dotLoop.stop();
+        Animated.parallel([
+          Animated.timing(loadingOpacity, {
+            toValue: 0, duration: 300, useNativeDriver: true,
+          }),
+          Animated.timing(contentOpacity, {
+            toValue: 1, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setTransitioning(false);
+        });
+      }, 1400);
+    } else {
+      // Fast crossfade: extreme → daily
+      Animated.timing(contentOpacity, {
+        toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true,
+      }).start(() => {
+        setMode(newMode);
+        Animated.timing(contentOpacity, {
+          toValue: 1, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+        }).start();
+      });
+    }
+  }, [mode, transitioning, toggleSlide, contentOpacity, loadingOpacity, loadingDotAnim]);
+
+  const scrollFade = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.2], extrapolate: "clamp" });
+  const combined = Animated.multiply(headerOpacity, scrollFade);
+
+  const t = theme[mode];
+  const alerts = mode === "extreme" ? extremeAlerts : dailyAlerts;
+  const sections = buildSections(mode);
+
+  const toggleLeft = toggleSlide.interpolate({ inputRange: [0, 1], outputRange: ["2%", "50%"] });
+
+  // Use the target mode for toggle colors (responds immediately)
+  const toggleTarget = transitioning ? "extreme" : mode;
+  const tt = theme[toggleTarget];
+
+  let d = mode === "extreme" ? 400 : 80;
 
   return (
+  <View style={styles.root}>
     <Animated.ScrollView
-      style={styles.scroll}
+      style={[styles.scroll, { backgroundColor: t.bg }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       scrollEventThrottle={16}
@@ -75,64 +175,102 @@ export default function DashboardScreen() {
         { useNativeDriver: true }
       )}
     >
-      <Animated.View
-        style={{
-          opacity: combinedHeaderOpacity,
-          transform: [
-            { translateY: Animated.add(headerTranslateY, scrollTranslateY) },
-          ],
-        }}
-      >
-        <Text style={styles.title}>ConnectQ</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+      {/* Header */}
+      <Animated.View style={{ opacity: combined }}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: t.titleColor }]}>SIXTH</Text>
+          <Text style={[styles.time, { color: t.timeColor }]}>{time}</Text>
+        </View>
       </Animated.View>
 
-      <SectionHeader title="Environment" delay={envSectionDelay} />
-      <View style={styles.grid}>
-        {environment.map((m, i) => (
-          <MetricCard key={m.id} metric={m} delay={envCardBaseDelay + i * 80} />
-        ))}
+      {/* Toggle */}
+      <View style={styles.toggleWrap}>
+        <Animated.View style={[styles.thumb, { left: toggleLeft, backgroundColor: tt.thumbBg, borderColor: tt.thumbBorder }]} />
+        <Pressable style={styles.toggleBtn} onPress={() => handleMode("daily")} disabled={transitioning}>
+          <Text style={[styles.toggleLabel, (mode === "daily" && !transitioning) && { color: theme.daily.accent }]}>Daily</Text>
+        </Pressable>
+        <Pressable style={styles.toggleBtn} onPress={() => handleMode("extreme")} disabled={transitioning}>
+          <Text style={[styles.toggleLabel, (mode === "extreme" || transitioning) && { color: theme.extreme.accent }]}>Extreme</Text>
+        </Pressable>
       </View>
 
-      <SectionHeader title="Body" delay={bodySectionDelay} />
-      <View style={styles.grid}>
-        {body.map((m, i) => (
-          <MetricCard key={m.id} metric={m} delay={bodyCardBaseDelay + i * 80} />
-        ))}
-      </View>
+      {/* Content */}
+      <Animated.View style={{ opacity: contentOpacity }}>
+        {/* Expedition (extreme only) */}
+        {mode === "extreme" && <ExpeditionHero expedition={expedition} delay={80} />}
 
-      <View style={styles.spacer} />
+        {/* Alerts */}
+        {alerts.map((a, i) => <AlertCard key={a.id} alert={a} delay={d + i * 40} />)}
+
+        {/* Sections */}
+        {sections.map((section) => {
+          d += 60;
+          const base = d + 50;
+          d = base + section.items.length * 50;
+          const odd = section.items.length % 2 !== 0;
+
+          return (
+            <View key={section.key}>
+              <SectionHeader title={section.title} mode={mode} delay={d - section.items.length * 50} />
+              <View style={styles.grid}>
+                {section.items.map((m, i) => (
+                  <MetricCard
+                    key={m.id}
+                    metric={m}
+                    mode={mode}
+                    delay={base + i * 50}
+                    fullWidth={odd && i === section.items.length - 1}
+                  />
+                ))}
+              </View>
+            </View>
+          );
+        })}
+
+        <View style={styles.spacer} />
+      </Animated.View>
     </Animated.ScrollView>
+
+    {/* Loading overlay */}
+    {transitioning && (
+      <Animated.View style={[styles.loadingOverlay, { opacity: loadingOpacity }]} pointerEvents="none">
+        <Animated.View style={[styles.loadingDot, { opacity: loadingDotAnim }]} />
+        <Text style={styles.loadingText}>Initializing sensors</Text>
+      </Animated.View>
+    )}
+  </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    backgroundColor: "#0A0A0A",
+  root: { flex: 1 },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 14 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 },
+  title: { fontSize: 22, fontWeight: "700", letterSpacing: -0.5 },
+  time: { fontSize: 11, fontWeight: "500" },
+  toggleWrap: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 3, marginBottom: 12 },
+  thumb: { position: "absolute", top: 3, bottom: 3, width: "48%", borderRadius: 8, borderWidth: 1 },
+  toggleBtn: { flex: 1, alignItems: "center", paddingVertical: 7 },
+  toggleLabel: { color: "#57534E", fontSize: 13, fontWeight: "600" },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
   },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
+  loadingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#FBBF24",
   },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 32,
-    fontWeight: "700",
+  loadingText: {
+    color: "#78716C",
+    fontSize: 12,
+    fontWeight: "500",
+    letterSpacing: 0.5,
   },
-  subtitle: {
-    color: "#666666",
-    fontSize: 14,
-    fontWeight: "400",
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  spacer: {
-    height: 60,
-  },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  spacer: { height: 50 },
 });
