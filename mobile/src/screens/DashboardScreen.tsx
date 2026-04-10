@@ -8,17 +8,17 @@ import {
   View,
 } from "react-native";
 import AlertCard from "../components/AlertCard";
+import BodyMap from "../components/BodyMap";
 import ExpeditionHero from "../components/ExpeditionHero";
+import JourneyMap from "../components/JourneyMap";
 import MetricCard from "../components/MetricCard";
+import Onboarding from "../components/Onboarding";
 import SectionHeader from "../components/SectionHeader";
-import {
-  dailyAlerts,
-  expedition,
-  extremeAlerts,
-  metrics,
-  type AppMode,
-  type Metric,
-} from "../data/mockData";
+import SessionFeedback from "../components/SessionFeedback";
+import StampWall from "../components/StampWall";
+import { type AppMode, type Metric } from "../data/mockData";
+import { useScenarioSwipe } from "../hooks/useScenarioSwipe";
+import { useSimulatedData } from "../hooks/useSimulatedData";
 
 function formatTime(): string {
   return new Date().toLocaleString("en-US", {
@@ -30,8 +30,8 @@ function formatTime(): string {
 
 type SectionDef = { key: string; title: string; items: Metric[] };
 
-function buildSections(mode: AppMode): SectionDef[] {
-  const filtered = metrics.filter((m) => m.modes.includes(mode));
+function buildSections(mode: AppMode, allMetrics: Metric[]): SectionDef[] {
+  const filtered = allMetrics.filter((m) => m.modes.includes(mode));
   const groups: Record<string, { title: string; items: Metric[] }> = {};
   const titles: Record<string, string> = {
     vitals: "Vitals",
@@ -67,6 +67,8 @@ const theme = {
 };
 
 export default function DashboardScreen() {
+  const { scenarioIndex, currentPreset, panHandlers } = useScenarioSwipe();
+  const { metrics, expedition, extremeAlerts, dailyAlerts } = useSimulatedData(currentPreset);
   const [mode, setMode] = useState<AppMode>("daily");
   const [transitioning, setTransitioning] = useState(false);
   const [time, setTime] = useState(formatTime);
@@ -76,6 +78,11 @@ export default function DashboardScreen() {
   const contentOpacity = useRef(new Animated.Value(1)).current;
   const loadingOpacity = useRef(new Animated.Value(0)).current;
   const loadingDotAnim = useRef(new Animated.Value(0)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const overlayScale = useRef(new Animated.Value(0.85)).current;
+  const [overlayLabel, setOverlayLabel] = useState("");
+  const prevScenarioRef = useRef(scenarioIndex);
+  const modeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setTime(formatTime()), 60_000);
@@ -88,17 +95,55 @@ export default function DashboardScreen() {
     }).start();
   }, [headerOpacity]);
 
+  // Single coordinated effect for scenario changes: overlay + mode lock
+  useEffect(() => {
+    if (prevScenarioRef.current === scenarioIndex) return;
+    prevScenarioRef.current = scenarioIndex;
+
+    // Clean up any in-flight mode transition
+    if (modeTimerRef.current) {
+      clearTimeout(modeTimerRef.current);
+      modeTimerRef.current = null;
+    }
+    setTransitioning(false);
+    loadingOpacity.setValue(0);
+    contentOpacity.setValue(1);
+
+    // Show overlay for non-interstitial presets (interstitials render their own UI)
+    if (!currentPreset.interstitial) {
+      setOverlayLabel(currentPreset.label);
+      overlayScale.setValue(0.85);
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(overlayOpacity, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.spring(overlayScale, { toValue: 1, friction: 8, tension: 120, useNativeDriver: true }),
+        ]),
+        Animated.delay(800),
+        Animated.timing(overlayOpacity, { toValue: 0, duration: 500, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      ]).start();
+    }
+
+    // Handle mode lock — set mode immediately so theme colors update in sync
+    const locked = currentPreset.lockedMode;
+    if (locked && locked !== mode) {
+      setMode(locked);
+      Animated.spring(toggleSlide, {
+        toValue: locked === "extreme" ? 1 : 0, friction: 8, tension: 120, useNativeDriver: false,
+      }).start();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenarioIndex]);
+
   const handleMode = useCallback((newMode: AppMode) => {
     if (newMode === mode || transitioning) return;
+    if (currentPreset.lockedMode) return;
 
-    // Slide the toggle thumb immediately
     Animated.spring(toggleSlide, {
       toValue: newMode === "extreme" ? 1 : 0,
       friction: 8, tension: 120, useNativeDriver: false,
     }).start();
 
     if (newMode === "extreme") {
-      // Slow transition: daily → extreme
       setTransitioning(true);
 
       const dotLoop = Animated.loop(
@@ -108,35 +153,21 @@ export default function DashboardScreen() {
         ])
       );
 
-      // Fade out content + fade in loading simultaneously
       dotLoop.start();
       Animated.parallel([
-        Animated.timing(contentOpacity, {
-          toValue: 0, duration: 350, easing: Easing.in(Easing.cubic), useNativeDriver: true,
-        }),
-        Animated.timing(loadingOpacity, {
-          toValue: 1, duration: 350, useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setMode(newMode);
-      });
+        Animated.timing(contentOpacity, { toValue: 0, duration: 350, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(loadingOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+      ]).start(() => { setMode(newMode); });
 
-      // After hold, crossfade loading out + content in
-      setTimeout(() => {
+      modeTimerRef.current = setTimeout(() => {
+        modeTimerRef.current = null;
         dotLoop.stop();
         Animated.parallel([
-          Animated.timing(loadingOpacity, {
-            toValue: 0, duration: 300, useNativeDriver: true,
-          }),
-          Animated.timing(contentOpacity, {
-            toValue: 1, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-          }),
-        ]).start(() => {
-          setTransitioning(false);
-        });
+          Animated.timing(loadingOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+          Animated.timing(contentOpacity, { toValue: 1, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        ]).start(() => { setTransitioning(false); });
       }, 1400);
     } else {
-      // Fast crossfade: extreme → daily
       Animated.timing(contentOpacity, {
         toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true,
       }).start(() => {
@@ -146,25 +177,44 @@ export default function DashboardScreen() {
         }).start();
       });
     }
-  }, [mode, transitioning, toggleSlide, contentOpacity, loadingOpacity, loadingDotAnim]);
+  }, [mode, transitioning, toggleSlide, contentOpacity, loadingOpacity, loadingDotAnim, currentPreset.lockedMode]);
 
   const scrollFade = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.2], extrapolate: "clamp" });
   const combined = Animated.multiply(headerOpacity, scrollFade);
 
   const t = theme[mode];
   const alerts = mode === "extreme" ? extremeAlerts : dailyAlerts;
-  const sections = buildSections(mode);
+  const sections = buildSections(mode, metrics);
 
   const toggleLeft = toggleSlide.interpolate({ inputRange: [0, 1], outputRange: ["2%", "50%"] });
 
-  // Use the target mode for toggle colors (responds immediately)
   const toggleTarget = transitioning ? "extreme" : mode;
   const tt = theme[toggleTarget];
 
   let d = mode === "extreme" ? 400 : 80;
 
+  // Interstitial: full-screen, no dashboard
+  if (currentPreset.interstitial) {
+    const inter = currentPreset.interstitial;
+    let content: React.ReactNode;
+    if (inter.variant === "onboarding") {
+      content = <Onboarding key={currentPreset.id} title={inter.title} sections={inter.sections} assessment={inter.assessment} insight={inter.insight} />;
+    } else if (inter.variant === "journey") {
+      content = <JourneyMap key={currentPreset.id} title={inter.title} subtitle={inter.subtitle} stages={inter.stages} badge={inter.badge} insight={inter.insight} />;
+    } else if (inter.variant === "feedback") {
+      content = <SessionFeedback key={currentPreset.id} title={inter.title} heroScore={inter.heroScore} heroLabel={inter.heroLabel} items={inter.items} summary={inter.summary} recommendation={inter.recommendation} />;
+    } else {
+      content = <StampWall key={currentPreset.id} stamps={inter.stamps} title={inter.title} subtitle={inter.subtitle} locked={inter.locked} />;
+    }
+    return (
+      <View style={styles.root} {...panHandlers}>
+        {content}
+      </View>
+    );
+  }
+
   return (
-  <View style={styles.root}>
+  <View style={styles.root} {...panHandlers}>
     <Animated.ScrollView
       style={[styles.scroll, { backgroundColor: t.bg }]}
       contentContainerStyle={styles.content}
@@ -186,23 +236,27 @@ export default function DashboardScreen() {
       {/* Toggle */}
       <View style={styles.toggleWrap}>
         <Animated.View style={[styles.thumb, { left: toggleLeft, backgroundColor: tt.thumbBg, borderColor: tt.thumbBorder }]} />
-        <Pressable style={styles.toggleBtn} onPress={() => handleMode("daily")} disabled={transitioning}>
-          <Text style={[styles.toggleLabel, (mode === "daily" && !transitioning) && { color: theme.daily.accent }]}>Daily</Text>
+        <Pressable style={styles.toggleBtn} onPress={() => handleMode("daily")} disabled={transitioning || !!currentPreset.lockedMode}>
+          <Text style={[
+            styles.toggleLabel,
+            currentPreset.lockedMode === "extreme" ? styles.toggleDisabled : (mode === "daily" && !transitioning) && { color: theme.daily.accent },
+          ]}>Daily</Text>
         </Pressable>
-        <Pressable style={styles.toggleBtn} onPress={() => handleMode("extreme")} disabled={transitioning}>
-          <Text style={[styles.toggleLabel, (mode === "extreme" || transitioning) && { color: theme.extreme.accent }]}>Extreme</Text>
+        <Pressable style={styles.toggleBtn} onPress={() => handleMode("extreme")} disabled={transitioning || !!currentPreset.lockedMode}>
+          <Text style={[
+            styles.toggleLabel,
+            currentPreset.lockedMode === "daily" ? styles.toggleDisabled : (mode === "extreme" || transitioning) && { color: theme.extreme.accent },
+          ]}>Extreme</Text>
         </Pressable>
       </View>
 
       {/* Content */}
       <Animated.View style={{ opacity: contentOpacity }}>
-        {/* Expedition (extreme only) */}
+        {currentPreset.bodyMap && <BodyMap metrics={metrics} />}
         {mode === "extreme" && <ExpeditionHero expedition={expedition} delay={80} />}
 
-        {/* Alerts */}
         {alerts.map((a, i) => <AlertCard key={a.id} alert={a} delay={d + i * 40} />)}
 
-        {/* Sections */}
         {sections.map((section) => {
           d += 60;
           const base = d + 50;
@@ -238,6 +292,18 @@ export default function DashboardScreen() {
         <Text style={styles.loadingText}>Initializing sensors</Text>
       </Animated.View>
     )}
+
+    {/* Scenario change overlay */}
+    <Animated.View
+      style={[styles.scenarioOverlay, { opacity: overlayOpacity }]}
+      pointerEvents="none"
+    >
+      <Animated.Text
+        style={[styles.scenarioOverlayText, { color: t.accent, transform: [{ scale: overlayScale }] }]}
+      >
+        {overlayLabel}
+      </Animated.Text>
+    </Animated.View>
   </View>
   );
 }
@@ -250,6 +316,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: "700", letterSpacing: -0.5 },
   time: { fontSize: 11, fontWeight: "500" },
   toggleWrap: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 3, marginBottom: 12 },
+  toggleDisabled: { color: "#1A1A1A" },
   thumb: { position: "absolute", top: 3, bottom: 3, width: "48%", borderRadius: 8, borderWidth: 1 },
   toggleBtn: { flex: 1, alignItems: "center", paddingVertical: 7 },
   toggleLabel: { color: "#57534E", fontSize: 13, fontWeight: "600" },
@@ -273,4 +340,16 @@ const styles = StyleSheet.create({
   },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   spacer: { height: 50 },
+  scenarioOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  scenarioOverlayText: {
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
 });

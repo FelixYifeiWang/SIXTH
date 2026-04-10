@@ -26,6 +26,8 @@ export type Metric = {
   range?: MetricRange;
   subtitle?: string;
   modes: AppMode[];
+  precision?: number;
+  sparkRange?: [number, number];
 };
 
 export type AlertChannel = "haptic" | "audio" | "thermal";
@@ -57,7 +59,7 @@ export type ExpeditionInfo = {
 
 // ── Helpers ──
 
-function getStatus(
+export function getStatus(
   value: number,
   range?: MetricRange
 ): MetricStatus {
@@ -103,7 +105,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "bpm",
     icon: "❤️",
     accentColor: "#FF6B8A",
-    trend: [88, 104, 91, 112, 96, 85, 98],
+    trend: [94, 96, 100, 97, 101, 95, 98],
     section: "vitals",
     modes: ["daily", "extreme"],
     range: { min: 40, max: 200, warningHigh: 120, criticalHigh: 150, warningLow: 50, criticalLow: 40 },
@@ -115,7 +117,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "%",
     icon: "🫁",
     accentColor: "#5B8DEF",
-    trend: [89, 84, 87, 81, 85, 79, 82],
+    trend: [84, 83, 84, 82, 83, 81, 82],
     section: "vitals",
     modes: ["daily", "extreme"],
     subtitle: "Low",
@@ -125,10 +127,10 @@ const rawMetrics: Omit<Metric, "status">[] = [
     id: "hrv",
     label: "HRV",
     value: 28,
-    unit: "ms RMSSD",
+    unit: "ms",
     icon: "💓",
     accentColor: "#A78BFA",
-    trend: [38, 26, 33, 22, 31, 24, 28],
+    trend: [31, 29, 32, 27, 30, 26, 28],
     section: "vitals",
     modes: ["extreme"],
     subtitle: "Stressed",
@@ -143,7 +145,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "°C",
     icon: "🌡️",
     accentColor: "#F5A623",
-    trend: [36.9, 36.5, 36.8, 36.3, 36.6, 36.2, 36.4],
+    trend: [36.5, 36.5, 36.4, 36.5, 36.3, 36.4, 36.4],
     section: "body",
     modes: ["daily", "extreme"],
     subtitle: "Watch",
@@ -156,7 +158,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "°C",
     icon: "🤚",
     accentColor: "#FFBB54",
-    trend: [31.4, 28.6, 30.1, 27.8, 29.3, 27.5, 28.1],
+    trend: [28.5, 28.3, 28.6, 28.2, 28.4, 28.0, 28.1],
     section: "body",
     modes: ["extreme"],
     range: { min: 15, max: 37, warningLow: 27, criticalLow: 22 },
@@ -170,7 +172,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "m",
     icon: "⛰️",
     accentColor: "#6EE7B7",
-    trend: [6840, 6960, 6910, 7050, 7020, 7130, 7162],
+    trend: [7155, 7157, 7156, 7158, 7159, 7160, 7162],
     section: "environment",
     modes: ["daily", "extreme"],
   },
@@ -181,7 +183,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "hPa",
     icon: "📊",
     accentColor: "#93C5FD",
-    trend: [382, 379, 381, 377, 378, 375, 376],
+    trend: [377, 376, 377, 376, 376, 377, 376],
     section: "environment",
     modes: ["extreme"],
     subtitle: "37% sea lvl",
@@ -193,7 +195,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "°C",
     icon: "❄️",
     accentColor: "#5AC8CA",
-    trend: [-18, -21, -19, -23, -20, -24, -22],
+    trend: [-21, -22, -21, -22, -23, -22, -22],
     section: "environment",
     modes: ["daily", "extreme"],
     range: { min: -50, max: 10, warningLow: -25, criticalLow: -35 },
@@ -207,7 +209,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "spm",
     icon: "🦶",
     accentColor: "#818CF8",
-    trend: [48, 40, 46, 38, 44, 41, 42],
+    trend: [44, 43, 40, 43, 41, 44, 42],
     section: "motion",
     modes: ["extreme"],
   },
@@ -218,7 +220,7 @@ const rawMetrics: Omit<Metric, "status">[] = [
     unit: "m/hr",
     icon: "📈",
     accentColor: "#6EE7B7",
-    trend: [120, 95, 108, 88, 96, 80, 84],
+    trend: [92, 90, 88, 87, 86, 85, 84],
     section: "motion",
     modes: ["daily", "extreme"],
     subtitle: "Slowing",

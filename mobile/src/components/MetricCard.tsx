@@ -47,80 +47,125 @@ function Sparkline({
   color,
   active,
   entranceDelay,
+  sparkRange,
 }: {
   data: number[];
   color: string;
   active: boolean;
   entranceDelay: number;
+  sparkRange?: [number, number];
 }) {
   if (data.length === 0) return null;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const barScales = useRef(data.map(() => new Animated.Value(0))).current;
 
+  const count = data.length;
+  const barHeights = useRef(data.map(() => new Animated.Value(0))).current;
+  const barOpacities = useRef(data.map(() => new Animated.Value(0))).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const entranceDone = useRef(false);
+
+  // Breathing pulse on the whole container
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 0.7, duration: 1500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
+      ]),
     );
     loop.start();
     return () => loop.stop();
   }, [pulseAnim]);
 
+  // Normalize a value to 0–1 against the fixed sparkRange
+  const normalize = useCallback(
+    (val: number) => {
+      if (sparkRange) {
+        const [lo, hi] = sparkRange;
+        return Math.max(0, Math.min(1, (val - lo) / (hi - lo)));
+      }
+      return 0.5;
+    },
+    [sparkRange],
+  );
+
+  // Entrance: spring bars in one by one
   useEffect(() => {
     const timer = setTimeout(() => {
       Animated.parallel(
-        barScales.map((scale, i) =>
-          Animated.sequence([
+        data.map((val, i) => {
+          const n = normalize(val);
+          return Animated.sequence([
             Animated.delay(i * 25),
-            Animated.spring(scale, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }),
-          ])
-        )
-      ).start();
+            Animated.parallel([
+              Animated.spring(barHeights[i], { toValue: 4 + n * 18, friction: 4, tension: 140, useNativeDriver: false }),
+              Animated.spring(barOpacities[i], { toValue: 0.35 + n * 0.45, friction: 4, tension: 140, useNativeDriver: false }),
+            ]),
+          ]);
+        }),
+      ).start(() => {
+        entranceDone.current = true;
+      });
     }, entranceDelay + 200);
     return () => clearTimeout(timer);
-  }, [barScales, entranceDelay]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Live updates: smoothly animate to new heights when data changes
   useEffect(() => {
-    if (active) {
-      Animated.parallel(
-        barScales.map((scale, i) =>
-          Animated.sequence([
-            Animated.delay(i * 30),
-            Animated.timing(scale, { toValue: 0.1, duration: 100, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-            Animated.spring(scale, { toValue: 1, friction: 3, tension: 200, useNativeDriver: true }),
-          ])
-        )
-      ).start();
-    }
-  }, [active, barScales]);
+    if (!entranceDone.current) return;
+
+    data.forEach((val, i) => {
+      const n = normalize(val);
+      Animated.parallel([
+        Animated.timing(barHeights[i], {
+          toValue: 4 + n * 18,
+          duration: 350,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(barOpacities[i], {
+          toValue: 0.35 + n * 0.45,
+          duration: 350,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start();
+    });
+  }, [data, barHeights, barOpacities, normalize]);
+
+  // Press bounce
+  useEffect(() => {
+    if (!active) return;
+
+    barHeights.forEach((anim, i) => {
+      const n = normalize(data[i]);
+      const target = 4 + n * 18;
+      Animated.sequence([
+        Animated.delay(i * 30),
+        Animated.timing(anim, { toValue: target * 0.1, duration: 100, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+        Animated.spring(anim, { toValue: target, friction: 3, tension: 200, useNativeDriver: false }),
+      ]).start();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   return (
     <Animated.View style={[sparkStyles.container, { opacity: pulseAnim }]}>
-      {data.map((val, i) => {
-        const n = (val - min) / range;
-        return (
-          <Animated.View
-            key={i}
-            style={[sparkStyles.bar, {
-              height: 4 + n * 18,
-              backgroundColor: color,
-              opacity: 0.3 + n * 0.5,
-              transform: [{ scaleY: barScales[i] }],
-            }]}
-          />
-        );
-      })}
+      {Array.from({ length: count }, (_, i) => (
+        <Animated.View
+          key={i}
+          style={[sparkStyles.bar, {
+            height: barHeights[i],
+            backgroundColor: color,
+            opacity: barOpacities[i],
+          }]}
+        />
+      ))}
     </Animated.View>
   );
 }
 
 const sparkStyles = StyleSheet.create({
-  container: { flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 10 },
+  container: { flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 10, height: 22 },
   bar: { width: 4, borderRadius: 2 },
 });
 
@@ -134,11 +179,18 @@ export default function MetricCard({ metric, mode, delay = 0, fullWidth = false 
   const pressRotate = useRef(new Animated.Value(0)).current;
   const glowOpacity = useRef(new Animated.Value(0)).current;
   const [sparkActive, setSparkActive] = useState(false);
-  const counterAnim = useRef(new Animated.Value(0)).current;
+  const [entranceDone, setEntranceDone] = useState(false);
+  const valueAnim = useRef(new Animated.Value(0)).current;
   const [displayValue, setDisplayValue] = useState(0);
-  const isDecimal = !Number.isInteger(metric.value);
-  const decimals = isDecimal ? (String(metric.value).split(".")[1]?.length ?? 1) : 0;
+  const initialValueRef = useRef(metric.value);
 
+  // Single listener — drives displayValue for both entrance and live updates
+  useEffect(() => {
+    const id = valueAnim.addListener(({ value }) => setDisplayValue(value));
+    return () => valueAnim.removeListener(id);
+  }, [valueAnim]);
+
+  // Entrance: fade/slide card in, then count up 0 → initial value
   useEffect(() => {
     const timer = setTimeout(() => {
       Animated.parallel([
@@ -146,20 +198,35 @@ export default function MetricCard({ metric, mode, delay = 0, fullWidth = false 
         Animated.timing(translateY, { toValue: 0, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
         Animated.timing(scaleAnim, { toValue: 1, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       ]).start(() => {
-        Animated.timing(counterAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+        Animated.timing(valueAnim, {
+          toValue: initialValueRef.current,
+          duration: 400,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }).start(() => setEntranceDone(true));
       });
     }, delay);
     return () => clearTimeout(timer);
-  }, [fadeAnim, translateY, scaleAnim, counterAnim, delay]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Live updates: smoothly glide to new value
   useEffect(() => {
-    const id = counterAnim.addListener(({ value }) => setDisplayValue(value * metric.value));
-    return () => counterAnim.removeListener(id);
-  }, [counterAnim, metric.value]);
+    if (!entranceDone) return;
+    Animated.timing(valueAnim, {
+      toValue: metric.value,
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [metric.value, entranceDone, valueAnim]);
 
-  const formattedValue = displayValue >= metric.value
-    ? String(metric.value)
-    : isDecimal ? displayValue.toFixed(decimals) : String(Math.round(displayValue));
+  const formatNum = (v: number) =>
+    metric.precision != null && metric.precision > 0
+      ? v.toFixed(metric.precision)
+      : String(Math.round(v));
+
+  const formattedValue = formatNum(displayValue);
 
   const combinedScale = Animated.multiply(scaleAnim, pressScale);
   const rotateInterpolation = pressRotate.interpolate({
@@ -228,7 +295,7 @@ export default function MetricCard({ metric, mode, delay = 0, fullWidth = false 
           </Text>
         )}
 
-        <Sparkline data={metric.trend} color={metric.accentColor} active={sparkActive} entranceDelay={delay} />
+        <Sparkline data={metric.trend} color={metric.accentColor} active={sparkActive} entranceDelay={delay} sparkRange={metric.sparkRange} />
       </Pressable>
     </Animated.View>
   );

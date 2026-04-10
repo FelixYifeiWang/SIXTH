@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import type { ExpeditionInfo } from "../data/mockData";
 
@@ -11,11 +11,14 @@ export default function ExpeditionHero({ expedition, delay = 0 }: Props) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(16)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const [entranceDone, setEntranceDone] = useState(false);
 
-  const progress =
-    (expedition.currentAltitude - expedition.baseAltitude) /
-    (expedition.targetAltitude - expedition.baseAltitude);
+  const totalClimb = expedition.targetAltitude - expedition.baseAltitude;
+  const progress = totalClimb > 0
+    ? (expedition.currentAltitude - expedition.baseAltitude) / totalClimb
+    : 0;
 
+  // Entrance animation (runs once)
   useEffect(() => {
     const timer = setTimeout(() => {
       Animated.parallel([
@@ -37,11 +40,23 @@ export default function ExpeditionHero({ expedition, delay = 0 }: Props) {
           duration: 600,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
-        }).start();
+        }).start(() => setEntranceDone(true));
       });
     }, delay);
     return () => clearTimeout(timer);
-  }, [fadeAnim, translateY, progressAnim, delay, progress]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Animate progress bar on live altitude changes
+  useEffect(() => {
+    if (!entranceDone) return;
+    Animated.timing(progressAnim, {
+      toValue: progress,
+      duration: 400,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, entranceDone, progressAnim]);
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
