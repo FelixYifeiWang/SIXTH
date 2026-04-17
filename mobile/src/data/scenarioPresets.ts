@@ -31,6 +31,9 @@ export type ScenarioPreset = {
   lockedMode?: AppMode;
   interstitial?: Interstitial;
   bodyMap?: boolean;
+  // Live preset renders real sensor data from the Arduino instead of the
+  // scripted simulation. Daily/Extreme toggle stays user-switchable.
+  live?: boolean;
 };
 
 // ── Progression peaks ──
@@ -120,7 +123,16 @@ const STAMP_DENALI: Stamp = { mountain: "Denali", altitude: 6190, region: "Alask
 // ── Presets ──
 
 export const SCENARIO_PRESETS: ScenarioPreset[] = [
-  // 0 — Onboarding questionnaire
+  // 0 — LIVE: real sensor data from the Arduino
+  {
+    id: "live",
+    label: "LIVE",
+    live: true,
+    metricBaselines: {},
+    expedition: {},
+  },
+
+  // 1 — Onboarding questionnaire
   {
     id: "onboarding",
     label: "",

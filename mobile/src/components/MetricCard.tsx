@@ -279,7 +279,9 @@ export default function MetricCard({ metric, mode, delay = 0, fullWidth = false 
         <Text style={styles.label}>{metric.label}</Text>
 
         <View style={styles.valueRow}>
-          <Text style={styles.value}>{formattedValue}</Text>
+          <Text style={[styles.value, metric.placeholder && styles.valuePlaceholder]}>
+            {metric.placeholder ? "—" : formattedValue}
+          </Text>
           <Text style={styles.unit}>{metric.unit}</Text>
         </View>
 
@@ -335,6 +337,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "700",
     letterSpacing: -0.5,
+  },
+  valuePlaceholder: {
+    color: "#475569",
   },
   unit: {
     color: "#475569",

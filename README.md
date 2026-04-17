@@ -59,15 +59,20 @@ Needs `pyserial` when using `--serial` (see `requirements.txt`).
 
 ## Mobile app (`mobile/`)
 
-An Expo dashboard for the wearable. Runs fully on simulated data — no server or board required.
+An Expo dashboard for the wearable. Launches on the **LIVE** page (real sensor data); swipe left to browse the scenario demo deck.
 
 Features:
+- **LIVE page** (first page) — reads sensor data from the Arduino. Metrics without a real sensor source render `—` until wired. Daily/Extreme toggle is user-switchable. See "Wiring LIVE to the board" below.
 - **SIXTH branding** with two palettes — **Daily** (cool blue) and **Extreme** (warm amber) — toggled via the mode switch, with a loading transition when entering Extreme.
 - **Scenario presets** — swipe left/right to cycle through expedition and training scenarios (Mt. Rainier summit, Island Peak, etc.), onboarding, journey map, session feedback, and stamp-wall interstitials.
-- **Live simulation** — metric values and sparklines tick over time, seeded from the active preset.
+- **Live simulation** (demo presets only) — metric values and sparklines tick over time, seeded from the active preset.
 - **Body map** heat visualization for applicable scenarios.
 - **Alert cards** — sensor-accurate codes (E1–E4 extreme, D1–D4 daily) driven by metric thresholds.
-- **Expedition hero** — altitude, weather, sun times, and progress toward summit in Extreme mode.
+- **Expedition hero** — altitude, weather, sun times, and progress toward summit in Extreme mode (demo presets).
+
+### Wiring LIVE to the board
+
+Endpoints the app will call live in `mobile/src/api/sensorApi.ts`. Today `fetchSensorReport` is stubbed to return `null` (so the UI shows `OFFLINE`). The firmware currently speaks plain-text over TCP:4040, which React Native can't open without a native module — the planned path is to add an HTTP route (e.g. `GET /report`) to the sketch and swap the stub for a `fetch()` call. `parseSensorReport` already handles the existing report format. Thermistor maps to **Core Temp**; moisture is parsed but not yet bound to a dashboard metric.
 
 ## Project structure
 

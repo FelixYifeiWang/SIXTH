@@ -28,6 +28,9 @@ export type Metric = {
   modes: AppMode[];
   precision?: number;
   sparkRange?: [number, number];
+  // When true, the card renders "—" instead of a number. Used for LIVE metrics
+  // that don't yet have a real sensor backing them.
+  placeholder?: boolean;
 };
 
 export type AlertChannel = "haptic" | "audio" | "thermal";

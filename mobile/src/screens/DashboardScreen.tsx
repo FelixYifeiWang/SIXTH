@@ -19,6 +19,7 @@ import StampWall from "../components/StampWall";
 import { type AppMode, type Metric } from "../data/mockData";
 import { useScenarioSwipe } from "../hooks/useScenarioSwipe";
 import { useSimulatedData } from "../hooks/useSimulatedData";
+import { useLiveData, type LiveConnection } from "../hooks/useLiveData";
 
 function formatTime(): string {
   return new Date().toLocaleString("en-US", {
@@ -47,6 +48,23 @@ function buildSections(mode: AppMode, allMetrics: Metric[]): SectionDef[] {
   return order.filter((k) => groups[k]?.items.length).map((k) => ({ key: k, ...groups[k] }));
 }
 
+const connectionStyle: Record<LiveConnection, { dot: string; label: string; text: string }> = {
+  connected:    { dot: "#6EE7B7", label: "LIVE",    text: "#6EE7B7" },
+  connecting:   { dot: "#FBBF24", label: "LINKING", text: "#FBBF24" },
+  disconnected: { dot: "#57534E", label: "OFFLINE", text: "#78716C" },
+  error:        { dot: "#F87171", label: "ERROR",   text: "#F87171" },
+};
+
+function ConnectionChip({ connection }: { connection: LiveConnection }) {
+  const s = connectionStyle[connection];
+  return (
+    <View style={styles.chip}>
+      <View style={[styles.chipDot, { backgroundColor: s.dot }]} />
+      <Text style={[styles.chipLabel, { color: s.text }]}>{s.label}</Text>
+    </View>
+  );
+}
+
 const theme = {
   extreme: {
     bg: "#0C0A09",
@@ -68,7 +86,13 @@ const theme = {
 
 export default function DashboardScreen() {
   const { scenarioIndex, currentPreset, panHandlers } = useScenarioSwipe();
-  const { metrics, expedition, extremeAlerts, dailyAlerts } = useSimulatedData(currentPreset);
+  const sim = useSimulatedData(currentPreset);
+  const live = useLiveData(null); // TODO: feed in host from settings once wired
+  const isLive = !!currentPreset.live;
+  const metrics = isLive ? live.metrics : sim.metrics;
+  const expedition = isLive ? live.expedition : sim.expedition;
+  const extremeAlerts = isLive ? live.extremeAlerts : sim.extremeAlerts;
+  const dailyAlerts = isLive ? live.dailyAlerts : sim.dailyAlerts;
   const [mode, setMode] = useState<AppMode>("daily");
   const [transitioning, setTransitioning] = useState(false);
   const [time, setTime] = useState(formatTime);
@@ -229,7 +253,10 @@ export default function DashboardScreen() {
       <Animated.View style={{ opacity: combined }}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: t.titleColor }]}>SIXTH</Text>
-          <Text style={[styles.time, { color: t.timeColor }]}>{time}</Text>
+          <View style={styles.headerRight}>
+            {isLive && <ConnectionChip connection={live.connection} />}
+            <Text style={[styles.time, { color: t.timeColor }]}>{time}</Text>
+          </View>
         </View>
       </Animated.View>
 
@@ -253,7 +280,7 @@ export default function DashboardScreen() {
       {/* Content */}
       <Animated.View style={{ opacity: contentOpacity }}>
         {currentPreset.bodyMap && <BodyMap metrics={metrics} />}
-        {mode === "extreme" && <ExpeditionHero expedition={expedition} delay={80} />}
+        {mode === "extreme" && !isLive && <ExpeditionHero expedition={expedition} delay={80} />}
 
         {alerts.map((a, i) => <AlertCard key={a.id} alert={a} delay={d + i * 40} />)}
 
@@ -313,8 +340,12 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 14 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   title: { fontSize: 22, fontWeight: "700", letterSpacing: -0.5 },
   time: { fontSize: 11, fontWeight: "500" },
+  chip: { flexDirection: "row", alignItems: "center", gap: 5 },
+  chipDot: { width: 6, height: 6, borderRadius: 3 },
+  chipLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1 },
   toggleWrap: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 3, marginBottom: 12 },
   toggleDisabled: { color: "#1A1A1A" },
   thumb: { position: "absolute", top: 3, bottom: 3, width: "48%", borderRadius: 8, borderWidth: 1 },
