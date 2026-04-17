@@ -84,12 +84,36 @@ SIXTH/
 │       ├── hooks/                 # useScenarioSwipe, useSimulatedData
 │       └── data/                  # mockData.ts, scenarioPresets.ts
 ├── dev.sh                         # macOS: start Expo + controller together
-├── requirements.txt               # Python deps (pyserial + legacy placeholders)
+├── flash.sh                       # Compile + upload sketch.ino via arduino-cli
+├── .board.conf.example            # Template for board defaults (SERIAL_PORT, WIFI_TARGET, ...)
+├── requirements.txt               # Python deps (pyserial)
 ├── TODO.md
 └── README.md
 ```
 
 ## Setup
+
+### 0. Board defaults (optional but recommended)
+
+`dev.sh` and `flash.sh` read their defaults from `.board.conf` at the repo root. Generate it automatically with the board plugged in:
+
+```bash
+pip install -r requirements.txt      # for pyserial (one-time)
+python3 firmware/bridge/setup_board.py
+```
+
+The script calls `arduino-cli` to detect `SERIAL_PORT` + `FQBN`, then reads the serial monitor for ~15 s to catch the `Listening on <ip>:4040` line and fill in `WIFI_TARGET`. Run it with `--skip-wifi` if the sketch isn't flashed yet, then re-run after flashing to populate the IP.
+
+Manual alternative:
+
+```bash
+cp .board.conf.example .board.conf
+# edit .board.conf
+```
+
+Fields: `SERIAL_PORT`, `WIFI_TARGET` (host:port), `DEFAULT_TRANSPORT` (`serial` or `wifi`), `FQBN`. The file is gitignored so different machines can have different values.
+
+Without this file you can still pass values explicitly, e.g. `./dev.sh --wifi 192.168.1.42:4040` or `./flash.sh --port /dev/tty.usbmodem1101`.
 
 ### 1. Mobile app
 
@@ -103,10 +127,33 @@ Swipe horizontally on the dashboard to cycle through scenario presets. Tap the *
 
 ### 2. Firmware
 
-1. Open `firmware/sketch/sketch.ino` in the Arduino IDE.
-2. Board: any ESP32 Feather variant (e.g. *Adafruit HUZZAH32*). Arduino core: **esp32 by Espressif v3.x**.
-3. Fill in `WIFI_SSID` / `WIFI_PASS` (2.4 GHz only — ESP32 Feather does not support 5 GHz) or leave the placeholders to run USB-serial only.
-4. Flash. The serial monitor prints `WiFi connected. Listening on <ip>:4040` when the network is up.
+Board: any ESP32 Feather variant (e.g. *Adafruit HUZZAH32*). Arduino core: **esp32 by Espressif v3.x**.
+
+Fill in `WIFI_SSID` / `WIFI_PASS` in `firmware/sketch/sketch.ino` (2.4 GHz only — ESP32 Feather does not support 5 GHz). Leave the placeholders to run USB-serial only. After a successful boot, the serial monitor prints `WiFi connected. Listening on <ip>:4040`.
+
+**Flash from the terminal** (preferred — uses `arduino-cli`):
+
+```bash
+# one-time setup
+brew install arduino-cli
+arduino-cli config init
+arduino-cli config add board_manager.additional_urls \
+  https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32
+
+# find your port + fqbn
+arduino-cli board list
+
+# compile + upload
+./flash.sh                                # uses SERIAL_PORT + FQBN from .board.conf
+./flash.sh --port /dev/tty.usbmodem1101   # explicit port
+./flash.sh --port ... --fqbn esp32:esp32:adafruit_feather_esp32s3
+```
+
+`flash.sh` defaults `--fqbn` to `esp32:esp32:featheresp32` when neither `.board.conf` nor `--fqbn` overrides it. After flashing, monitor serial output with `screen /dev/tty.usbmodem1101 115200` (Ctrl-A then K to quit).
+
+**Flash from the Arduino IDE** (alternative): open `firmware/sketch/sketch.ino`, pick your board, and click Upload.
 
 ### 3. Laptop controller
 
@@ -122,11 +169,33 @@ python3 firmware/bridge/controller.py --wifi 192.168.1.42:4040
 `dev.sh` starts Expo in the current terminal and opens the controller in a new Terminal.app window:
 
 ```bash
-./dev.sh --serial /dev/tty.usbmodem1101
-./dev.sh --wifi   192.168.1.42:4040
+./dev.sh                                 # uses DEFAULT_TRANSPORT from .board.conf
+./dev.sh --serial                        # force serial, value from .board.conf
+./dev.sh --wifi                          # force wifi, value from .board.conf
+./dev.sh --serial /dev/tty.usbmodem1101  # explicit override
+./dev.sh --wifi   192.168.1.42:4040      # explicit override
 ```
 
 Ctrl-C each window independently.
+
+### 5. Verify the board (diagnostic)
+
+`firmware/bridge/diagnose.py` runs a quick smoke test against a connected board: it waits for a sensor report, checks the parsed values are in plausible ranges, and pings each activation key (1-5) + reset (R) to verify the write path. Any failure is flagged with a specific reason.
+
+```bash
+python3 firmware/bridge/diagnose.py --serial /dev/tty.usbmodem1101
+python3 firmware/bridge/diagnose.py --wifi 192.168.1.42:4040
+# optional: raise the sensor-report wait if WiFi is slow to settle
+python3 firmware/bridge/diagnose.py --wifi 192.168.1.42:4040 --timeout 10
+```
+
+Exits with code 0 when every check passes, 1 otherwise.
+
+Unit tests for the diagnostic's parsing / plausibility logic (hardware-free):
+
+```bash
+python3 firmware/bridge/test_diagnose.py
+```
 
 ## Known gaps
 

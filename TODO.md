@@ -9,7 +9,3 @@
 
 - [ ] Replace the temporary keyboard trigger in `firmware/bridge/controller.py`
   - Keys 1–5 / R are a stand-in so we can bench-test the five PWM outputs by hand.
-
-- [ ] Bake in the board's fixed WiFi IP and serial device path
-  - Today `dev.sh` and `controller.py` both require `--serial <dev>` or `--wifi <host:port>` every run.
-  - Once the board's address is stable, set defaults (or a tiny config file) so `./dev.sh` with no args just works.

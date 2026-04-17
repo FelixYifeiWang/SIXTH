@@ -1,0 +1,19 @@
+# Board defaults for ./dev.sh and ./flash.sh
+#
+# Copy to .board.conf and edit. `.board.conf` is gitignored so different
+# machines can have different values without stepping on each other.
+#
+# All fields are plain shell assignments — no quoting tricks needed.
+
+# USB serial device (from `arduino-cli board list`)
+SERIAL_PORT=/dev/tty.usbmodem1101
+
+# WiFi target host:port (IP printed by the sketch on boot; port is 4040)
+WIFI_TARGET=192.168.1.42:4040
+
+# Which transport dev.sh picks when run with no args.
+# One of: serial | wifi
+DEFAULT_TRANSPORT=wifi
+
+# Arduino FQBN for flash.sh (default featheresp32; override for S2/S3 boards).
+FQBN=esp32:esp32:featheresp32
