@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WebServer.h>
 #include <WiFi.h>
 #include <math.h>
 
@@ -8,10 +9,13 @@
 // WIFI_SSID / WIFI_PASS come from secrets.h. If the network is unreachable,
 // the sketch still runs over USB serial — WiFi is additive, not required.
 const uint16_t TCP_PORT = 4040;           // Laptop connects with: nc <ip> 4040
+const uint16_t HTTP_PORT = 80;            // Mobile app hits GET http://<ip>/report
 const unsigned long WIFI_CONNECT_TIMEOUT_MS = 10000;
 
 WiFiServer server(TCP_PORT);
 WiFiClient client;                         // single active client (dev prototype; no auth)
+WebServer httpServer(HTTP_PORT);
+String lastReport;                         // cache of most recent report text (served to HTTP)
 
 // ===================== Pin definitions =====================
 const int MOTOR_PIN = 21;    // Feather MI pin -> ULN2803A 1B
@@ -148,8 +152,10 @@ float readMoisturePercent() {
 }
 
 // ===================== Reporting =====================
-// Writes a full sensor report to any Print target (Serial, WiFiClient, etc.).
-void printReport(Print& out) {
+// Builds a full sensor report into a String. Each call re-reads the sensors,
+// so the caller controls cadence. Same format the laptop controller and the
+// mobile parser expect.
+String buildReport() {
   int thermRaw = readThermistorRawAveraged();
   float thermVoltage = (thermRaw / ADC_MAX) * VREF;
   float thermResistance = readThermistorResistance();
@@ -161,43 +167,47 @@ void printReport(Print& out) {
   float moistResistance = readMoistureResistance();
   float moistPercent = readMoisturePercent();
 
-  out.println("====== SENSOR REPORT ======");
+  String s;
+  s.reserve(640);
 
-  out.println("------ Thermistor ------");
-  out.print("ADC raw: ");
-  out.println(thermRaw);
+  s += "====== SENSOR REPORT ======\n";
 
-  out.print("Voltage: ");
-  out.print(thermVoltage, 3);
-  out.println(" V");
+  s += "------ Thermistor ------\n";
+  s += "ADC raw: "; s += thermRaw; s += "\n";
+  s += "Voltage: "; s += String(thermVoltage, 3); s += " V\n";
+  s += "Resistance: "; s += String(thermResistance, 0); s += " ohms\n";
+  s += "Temp: "; s += String(tempC, 2);
+  s += " \xC2\xB0""C  |  ";  // UTF-8 ° sign, matches existing output
+  s += String(tempF, 2);
+  s += " \xC2\xB0""F\n";
 
-  out.print("Resistance: ");
-  out.print(thermResistance, 0);
-  out.println(" ohms");
+  s += "------ Moisture ------\n";
+  s += "ADC raw: "; s += moistRaw; s += "\n";
+  s += "Voltage: "; s += String(moistVoltage, 3); s += " V\n";
+  s += "Resistance: "; s += String(moistResistance, 0); s += " ohms\n";
+  s += "Moisture: "; s += String(moistPercent, 1); s += " %\n";
 
-  out.print("Temp: ");
-  out.print(tempC, 2);
-  out.print(" °C  |  ");
-  out.print(tempF, 2);
-  out.println(" °F");
+  s += "------------------------\n";
 
-  out.println("------ Moisture ------");
-  out.print("ADC raw: ");
-  out.println(moistRaw);
+  return s;
+}
 
-  out.print("Voltage: ");
-  out.print(moistVoltage, 3);
-  out.println(" V");
+// Writes the current cached report to any Print target (Serial, WiFiClient, etc.).
+void printReport(Print& out) {
+  out.print(lastReport);
+}
 
-  out.print("Resistance: ");
-  out.print(moistResistance, 0);
-  out.println(" ohms");
+void handleHttpReport() {
+  if (lastReport.length() == 0) {
+    // Cold start before the first tick — build one on demand.
+    lastReport = buildReport();
+  }
+  httpServer.sendHeader("Access-Control-Allow-Origin", "*");
+  httpServer.send(200, "text/plain; charset=utf-8", lastReport);
+}
 
-  out.print("Moisture: ");
-  out.print(moistPercent, 1);
-  out.println(" %");
-
-  out.println("------------------------");
+void handleHttpNotFound() {
+  httpServer.send(404, "text/plain", "Not found. Try GET /report.\n");
 }
 
 // ===================== WiFi =====================
@@ -218,6 +228,9 @@ void beginWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     server.begin();
+    httpServer.on("/report", HTTP_GET, handleHttpReport);
+    httpServer.onNotFound(handleHttpNotFound);
+    httpServer.begin();
     Serial.print("WiFi connected. Listening on ");
     Serial.print(WiFi.localIP());
     Serial.print(":");
@@ -226,6 +239,9 @@ void beginWiFi() {
     Serial.print(WiFi.localIP());
     Serial.print(" ");
     Serial.println(TCP_PORT);
+    Serial.print("Mobile LIVE page: http://");
+    Serial.print(WiFi.localIP());
+    Serial.println("/report");
   } else {
     Serial.println("WiFi unavailable — continuing over USB serial only.");
   }
@@ -349,13 +365,19 @@ void loop() {
   // -------- Command input (Serial + WiFi) --------
   serviceInput();
 
+  // -------- HTTP server (serves cached /report to mobile app) --------
+  if (WiFi.status() == WL_CONNECTED) {
+    httpServer.handleClient();
+  }
+
   // -------- Sensor reading and print --------
   if (now - lastPrint >= 1000) {
     lastPrint = now;
 
-    printReport(Serial);
+    lastReport = buildReport();
+    Serial.print(lastReport);
     if (client && client.connected()) {
-      printReport(client);
+      client.print(lastReport);
     }
   }
 }

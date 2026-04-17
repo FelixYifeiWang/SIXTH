@@ -72,7 +72,11 @@ Features:
 
 ### Wiring LIVE to the board
 
-Endpoints the app will call live in `mobile/src/api/sensorApi.ts`. Today `fetchSensorReport` is stubbed to return `null` (so the UI shows `OFFLINE`). The firmware currently speaks plain-text over TCP:4040, which React Native can't open without a native module — the planned path is to add an HTTP route (e.g. `GET /report`) to the sketch and swap the stub for a `fetch()` call. `parseSensorReport` already handles the existing report format. Thermistor maps to **Core Temp**; moisture is parsed but not yet bound to a dashboard metric.
+1. Flash the sketch. On boot it connects to WiFi and starts an HTTP server on port 80 alongside the existing TCP:4040 stream. The serial monitor prints the URL, e.g. `Mobile LIVE page: http://192.168.1.42/report`.
+2. `cp mobile/.env.example mobile/.env` and set `EXPO_PUBLIC_BOARD_HOST` to that IP (or `<ip>:<port>`). `mobile/.env` is gitignored.
+3. `cd mobile && npm run start`. The LIVE page polls `GET /report` every second, parses the plain-text format, and updates metric cards. Fails fast (2.5 s timeout) when the board isn't reachable, dropping the chip back to `OFFLINE`.
+
+Today the only real mapping is **thermistor → Core Temp**. Moisture is parsed into `SensorReport` but not yet bound to a dashboard card; everything else renders `—` until a sensor is added. To bind a new metric, extend `applyReport` in `mobile/src/hooks/useLiveData.ts`.
 
 ## Project structure
 
@@ -116,6 +120,8 @@ pip install -r requirements.txt
 ```
 
 Copy `firmware/sketch/secrets.h.example` to `firmware/sketch/secrets.h` and fill in your 2.4 GHz WiFi credentials (ESP32 Feather does not support 5 GHz). `secrets.h` is gitignored so credentials stay local.
+
+Copy `mobile/.env.example` to `mobile/.env` and set `EXPO_PUBLIC_BOARD_HOST` to the board's IP (either `WIFI_TARGET` from `.board.conf` after running `setup_board.py`, or the line the sketch prints on boot: `Mobile LIVE page: http://<ip>/report`). Without this, the LIVE page stays on `OFFLINE`. `mobile/.env` is gitignored.
 
 ### Daily use
 

@@ -16,6 +16,7 @@ import Onboarding from "../components/Onboarding";
 import SectionHeader from "../components/SectionHeader";
 import SessionFeedback from "../components/SessionFeedback";
 import StampWall from "../components/StampWall";
+import { BOARD_HOST } from "../config";
 import { type AppMode, type Metric } from "../data/mockData";
 import { useScenarioSwipe } from "../hooks/useScenarioSwipe";
 import { useSimulatedData } from "../hooks/useSimulatedData";
@@ -87,7 +88,7 @@ const theme = {
 export default function DashboardScreen() {
   const { scenarioIndex, currentPreset, panHandlers } = useScenarioSwipe();
   const sim = useSimulatedData(currentPreset);
-  const live = useLiveData(null); // TODO: feed in host from settings once wired
+  const live = useLiveData(BOARD_HOST);
   const isLive = !!currentPreset.live;
   const metrics = isLive ? live.metrics : sim.metrics;
   const expedition = isLive ? live.expedition : sim.expedition;
