@@ -2,11 +2,11 @@
 #include <WiFi.h>
 #include <math.h>
 
+#include "secrets.h"  // defines WIFI_SSID and WIFI_PASS; gitignored
+
 // ===================== WiFi configuration =====================
-// Fill in your network credentials. If left blank or unreachable, the sketch
-// still runs over USB serial — WiFi is additive, not required.
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
+// WIFI_SSID / WIFI_PASS come from secrets.h. If the network is unreachable,
+// the sketch still runs over USB serial — WiFi is additive, not required.
 const uint16_t TCP_PORT = 4040;           // Laptop connects with: nc <ip> 4040
 const unsigned long WIFI_CONNECT_TIMEOUT_MS = 10000;
 

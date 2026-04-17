@@ -5,3 +5,4 @@ __pycache__/
 venv/
 .env
 .board.conf
+firmware/sketch/secrets.h

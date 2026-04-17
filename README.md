@@ -110,7 +110,7 @@ arduino-cli core update-index && arduino-cli core install esp32:esp32
 pip install -r requirements.txt
 ```
 
-Fill in `WIFI_SSID` / `WIFI_PASS` in `firmware/sketch/sketch.ino` (2.4 GHz only — the ESP32 Feather does not support 5 GHz).
+Copy `firmware/sketch/secrets.h.example` to `firmware/sketch/secrets.h` and fill in your 2.4 GHz WiFi credentials (ESP32 Feather does not support 5 GHz). `secrets.h` is gitignored so credentials stay local.
 
 ### Daily use
 
