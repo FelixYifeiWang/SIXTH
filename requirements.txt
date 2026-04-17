@@ -1,7 +1,1 @@
-fastapi
-uvicorn[standard]
-python-multipart
-requests
-openai
-python-dotenv
-hume
+pyserial
